@@ -2,6 +2,7 @@ import AVFoundation
 import Foundation
 import MediaPlayer
 import Observation
+import UIKit
 
 // MARK: - 播放状态（对应 MeloX PlayerStore 的歌词渲染所需接口）
 
@@ -111,6 +112,7 @@ final class PlayerStore {
     private static let legacyPlaybackStateKey = "lastPlaybackState.v1"
     private static let persistenceInterval: TimeInterval = 2
     private static let progressObservationInterval: TimeInterval = 0.2
+    private static let artworkCache = NSCache<NSURL, UIImage>()
 
     // MARK: 歌词视图依赖的成员（与 MeloX PlayerStore 对齐）
 
@@ -140,6 +142,7 @@ final class PlayerStore {
     private var itemStatusObservation: NSKeyValueObservation?
     private var timeControlStatusObservation: NSKeyValueObservation?
     private var restoreTimeoutTask: Task<Void, Never>?
+    private var artworkTask: Task<Void, Never>?
     private var remoteCommandHandlers: [
         (command: MPRemoteCommand, token: Any)
     ] = []
@@ -201,6 +204,8 @@ final class PlayerStore {
         playbackGeneration &+= 1
         let generation = playbackGeneration
 
+        artworkTask?.cancel()
+        artworkTask = nil
         tearDownPlayer()
         currentSong = song
         duration = song.duration
@@ -225,6 +230,7 @@ final class PlayerStore {
         )
         updateRemoteCommandAvailability()
         updateNowPlayingInfo(force: true)
+        loadNowPlayingArtwork(for: song, generation: generation)
 
         if autoplay {
             play()
@@ -468,6 +474,8 @@ final class PlayerStore {
         }
         isRestoringPlayback = false
         restoreTimeoutTask?.cancel()
+        artworkTask?.cancel()
+        artworkTask = nil
         playbackGeneration &+= 1
         tearDownPlayer()
         currentSong = nil
@@ -916,6 +924,10 @@ final class PlayerStore {
 
     // MARK: 锁屏与耳机遥控
 
+    func refreshNowPlayingInfo() {
+        updateNowPlayingInfo(force: true)
+    }
+
     private func configureRemoteCommands() {
         let center = MPRemoteCommandCenter.shared()
 
@@ -985,7 +997,51 @@ final class PlayerStore {
             canTogglePlayback && duration > 0
     }
 
-    private func updateNowPlayingInfo(force: Bool = false) {
+    private func loadNowPlayingArtwork(
+        for song: NowPlayingSong,
+        generation: Int
+    ) {
+        guard let artworkURL = song.artworkURL else { return }
+        if let image = Self.artworkCache.object(
+            forKey: artworkURL as NSURL
+        ) {
+            updateNowPlayingInfo(force: true, artwork: image)
+            return
+        }
+
+        artworkTask = Task { [weak self] in
+            do {
+                let (data, response) = try await URLSession.shared.data(
+                    from: artworkURL
+                )
+                guard let httpResponse = response as? HTTPURLResponse,
+                      200..<300 ~= httpResponse.statusCode,
+                      let image = UIImage(data: data) else {
+                    return
+                }
+                try Task.checkCancellation()
+                guard let self,
+                      self.playbackGeneration == generation,
+                      self.currentSong?.id == song.id else {
+                    return
+                }
+                Self.artworkCache.setObject(
+                    image,
+                    forKey: artworkURL as NSURL
+                )
+                self.updateNowPlayingInfo(force: true, artwork: image)
+            } catch is CancellationError {
+                return
+            } catch {
+                return
+            }
+        }
+    }
+
+    private func updateNowPlayingInfo(
+        force: Bool = false,
+        artwork: UIImage? = nil
+    ) {
         guard let song = currentSong else { return }
         let elapsed = estimatedProgress()
         guard force
@@ -1006,6 +1062,14 @@ final class PlayerStore {
         }
         if duration.isFinite, duration > 0 {
             info[MPMediaItemPropertyPlaybackDuration] = duration
+        }
+        if let artwork = artwork
+                ?? song.artworkURL.flatMap({
+                    Self.artworkCache.object(forKey: $0 as NSURL)
+                }) {
+            info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(
+                boundsSize: artwork.size
+            ) { _ in artwork }
         }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
         MPNowPlayingInfoCenter.default().playbackState =
@@ -1048,6 +1112,7 @@ final class PlayerStore {
 
     isolated deinit {
         restoreTimeoutTask?.cancel()
+        artworkTask?.cancel()
         tearDownPlayer()
         for observer in audioSessionObservers {
             NotificationCenter.default.removeObserver(observer)

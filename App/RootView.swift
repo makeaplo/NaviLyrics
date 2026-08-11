@@ -50,7 +50,15 @@ struct RootView: View {
             history.record(event, for: settings.serverURL)
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase != .active {
+            if phase == .active {
+                player.refreshNowPlayingInfo()
+                if session.status == .connected,
+                   let client = session.client {
+                    Task {
+                        await favorites.refresh(using: client)
+                    }
+                }
+            } else {
                 player.persistPlaybackState(force: true)
             }
         }
