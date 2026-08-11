@@ -138,6 +138,50 @@ struct SubsonicClient {
         return (resp.playlist?.entry ?? []).map(makeSong(from:))
     }
 
+    /// 创建播放列表，可选地一次加入歌曲。
+    func createPlaylist(
+        name: String,
+        songIDs: [String] = []
+    ) async throws {
+        let songItems = songIDs.map {
+            URLQueryItem(name: "songId", value: $0)
+        }
+        _ = try await request(
+            "createPlaylist",
+            params: ["name": name],
+            additionalItems: songItems
+        )
+    }
+
+    /// 修改播放列表名称，或加入、移除其中的歌曲。
+    func updatePlaylist(
+        id: String,
+        name: String? = nil,
+        songIDsToAdd: [String] = [],
+        songIndicesToRemove: [Int] = []
+    ) async throws {
+        var params = ["playlistId": id]
+        if let name {
+            params["name"] = name
+        }
+        let addItems = songIDsToAdd.map {
+            URLQueryItem(name: "songIdToAdd", value: $0)
+        }
+        let removeItems = songIndicesToRemove.map {
+            URLQueryItem(name: "songIndexToRemove", value: "\($0)")
+        }
+        _ = try await request(
+            "updatePlaylist",
+            params: params,
+            additionalItems: addItems + removeItems
+        )
+    }
+
+    /// 删除播放列表。
+    func deletePlaylist(id: String) async throws {
+        _ = try await request("deletePlaylist", params: ["id": id])
+    }
+
     /// 专辑内歌曲
     func songs(inAlbum albumID: String) async throws -> [SubsonicSong] {
         let resp: SubsonicResponse = try await request(
@@ -303,7 +347,8 @@ struct SubsonicClient {
 
     private func request(
         _ method: String,
-        params: [String: String]
+        params: [String: String],
+        additionalItems: [URLQueryItem] = []
     ) async throws -> SubsonicResponse {
         guard var comps = URLComponents(
             url: baseURL.appendingPathComponent("rest/\(method).view"),
@@ -313,6 +358,7 @@ struct SubsonicClient {
         }
         var items = makeAuthItems()
         items.append(contentsOf: params.map { URLQueryItem(name: $0.key, value: $0.value) })
+        items.append(contentsOf: additionalItems)
         comps.queryItems = items
 
         guard let url = comps.url else {
