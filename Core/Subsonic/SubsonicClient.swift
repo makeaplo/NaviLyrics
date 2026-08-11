@@ -10,6 +10,13 @@ struct SubsonicAlbum: Identifiable, Hashable {
     let year: Int?
 }
 
+struct SubsonicPlaylist: Identifiable, Hashable {
+    let id: String
+    let name: String
+    let songCount: Int
+    let coverArt: String?
+}
+
 struct SubsonicSong: Identifiable, Hashable {
     let id: String
     let title: String
@@ -78,6 +85,31 @@ struct SubsonicClient {
                 coverArt: a.coverArt, year: a.year
             )
         }
+    }
+
+    /// 播放列表目录。
+    func playlists() async throws -> [SubsonicPlaylist] {
+        let resp: SubsonicResponse = try await request(
+            "getPlaylists",
+            params: [:]
+        )
+        return (resp.playlists?.playlist ?? []).map { playlist in
+            SubsonicPlaylist(
+                id: playlist.id,
+                name: playlist.name,
+                songCount: max(playlist.songCount ?? 0, 0),
+                coverArt: playlist.coverArt
+            )
+        }
+    }
+
+    /// 播放列表内歌曲。
+    func songs(inPlaylist playlistID: String) async throws -> [SubsonicSong] {
+        let resp: SubsonicResponse = try await request(
+            "getPlaylist",
+            params: ["id": playlistID]
+        )
+        return (resp.playlist?.entry ?? []).map(makeSong(from:))
     }
 
     /// 专辑内歌曲
@@ -325,6 +357,8 @@ struct SubsonicResponse: Decodable {
     let version: String?
     let albumList2: AlbumList2?
     let album: AlbumDetail?
+    let playlists: Playlists?
+    let playlist: PlaylistDetail?
     let searchResult3: SearchResult3?
     let starred2: Starred2?
     let lyrics: LyricWrapper?
@@ -350,6 +384,18 @@ struct AlbumEntry: Decodable {
 }
 struct AlbumDetail: Decodable {
     let song: [SongEntry]?
+}
+struct Playlists: Decodable {
+    let playlist: [PlaylistEntry]?
+}
+struct PlaylistEntry: Decodable {
+    let id: String
+    let name: String
+    let songCount: Int?
+    let coverArt: String?
+}
+struct PlaylistDetail: Decodable {
+    let entry: [SongEntry]?
 }
 struct SearchResult3: Decodable {
     let song: [SongEntry]?

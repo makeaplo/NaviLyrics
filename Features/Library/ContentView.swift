@@ -100,6 +100,7 @@ struct ContentView: View {
                 client: client
             )
             favoritesSection(client: client)
+            playlistsSection(client: client)
 
             if session.albums.isEmpty {
                 ContentUnavailableView(
@@ -152,6 +153,16 @@ struct ContentView: View {
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
+            }
+        }
+    }
+
+    private func playlistsSection(client: SubsonicClient) -> some View {
+        Section("播放内容") {
+            NavigationLink {
+                PlaylistsView(client: client)
+            } label: {
+                Label("播放列表", systemImage: "music.note.list")
             }
         }
     }
