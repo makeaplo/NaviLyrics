@@ -8,7 +8,7 @@ struct ContentView: View {
     private let onOpenPlayer: () -> Void
     @State private var showSettings = false
     @State private var searchText = ""
-    @State private var searchResults: [SubsonicSong] = []
+    @State private var searchResults = SubsonicSearchResults()
     @State private var isSearching = false
     @State private var searchErrorMessage: String?
     @State private var activeSearchQuery = ""
@@ -313,29 +313,64 @@ struct ContentView: View {
                 ContentUnavailableView.search(text: normalizedSearchQuery)
                     .listRowBackground(Color.clear)
             } else {
-                Section("歌曲 · \(searchResults.count)") {
-                    ForEach(searchResults.indices, id: \.self) { index in
-                        let song = searchResults[index]
-                        LibrarySongRow(
-                            song: song,
-                            artworkURL: client.coverURL(
-                                coverArt: song.coverArt,
-                                size: 180
-                            ),
-                            isFavorite: favorites.isFavorite(
-                                songID: song.id,
-                                fallback: song.isStarred
-                            ),
-                            isFavoriteUpdating: favorites.isUpdating(
-                                songID: song.id
-                            ),
-                            onPlay: {
-                                playSearchResult(at: index, using: client)
-                            },
-                            onToggleFavorite: {
-                                toggleFavorite(song, using: client)
+                if !searchResults.songs.isEmpty {
+                    Section("歌曲 · \(searchResults.songs.count)") {
+                        ForEach(searchResults.songs.indices, id: \.self) { index in
+                            let song = searchResults.songs[index]
+                            LibrarySongRow(
+                                song: song,
+                                artworkURL: client.coverURL(
+                                    coverArt: song.coverArt,
+                                    size: 180
+                                ),
+                                isFavorite: favorites.isFavorite(
+                                    songID: song.id,
+                                    fallback: song.isStarred
+                                ),
+                                isFavoriteUpdating: favorites.isUpdating(
+                                    songID: song.id
+                                ),
+                                onPlay: {
+                                    playSearchResult(
+                                        at: index,
+                                        using: client
+                                    )
+                                },
+                                onToggleFavorite: {
+                                    toggleFavorite(song, using: client)
+                                }
+                            )
+                        }
+                    }
+                }
+
+                if !searchResults.albums.isEmpty {
+                    Section("专辑 · \(searchResults.albums.count)") {
+                        ForEach(searchResults.albums) { album in
+                            NavigationLink {
+                                AlbumView(client: client, album: album)
+                            } label: {
+                                AlbumRow(
+                                    album: album,
+                                    artworkURL: client.coverURL(
+                                        coverArt: album.coverArt,
+                                        size: 180
+                                    )
+                                )
                             }
-                        )
+                        }
+                    }
+                }
+
+                if !searchResults.artists.isEmpty {
+                    Section("艺人 · \(searchResults.artists.count)") {
+                        ForEach(searchResults.artists) { artist in
+                            NavigationLink {
+                                ArtistView(client: client, artist: artist)
+                            } label: {
+                                ArtistRow(artist: artist)
+                            }
+                        }
                     }
                 }
             }
@@ -383,7 +418,7 @@ struct ContentView: View {
         let query = normalizedSearchQuery
         guard !query.isEmpty else {
             activeSearchQuery = ""
-            searchResults = []
+            searchResults = SubsonicSearchResults()
             searchErrorMessage = nil
             isSearching = false
             return
@@ -402,7 +437,7 @@ struct ContentView: View {
             return
         } catch {
             guard activeSearchQuery == query else { return }
-            searchResults = []
+            searchResults = SubsonicSearchResults()
             searchErrorMessage = error.localizedDescription
         }
         if activeSearchQuery == query {
@@ -414,8 +449,8 @@ struct ContentView: View {
         at index: Int,
         using client: SubsonicClient
     ) {
-        guard searchResults.indices.contains(index) else { return }
-        let queue = searchResults.map { song in
+        guard searchResults.songs.indices.contains(index) else { return }
+        let queue = searchResults.songs.map { song in
             NowPlayingSong(
                 id: song.id,
                 title: song.title,
@@ -597,6 +632,31 @@ private struct AlbumRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct ArtistRow: View {
+    let artist: SubsonicArtist
+
+    var body: some View {
+        HStack(spacing: 12) {
+            RoundedRectangle(cornerRadius: 27)
+                .fill(.quaternary)
+                .frame(width: 54, height: 54)
+                .overlay {
+                    Image(systemName: "person.fill")
+                        .foregroundStyle(.secondary)
+                }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(artist.name)
+                    .font(.body)
+                    .lineLimit(1)
+                Text("\(artist.albumCount) 张专辑")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .accessibilityElement(children: .combine)

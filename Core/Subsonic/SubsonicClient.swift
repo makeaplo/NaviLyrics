@@ -17,6 +17,12 @@ struct SubsonicPlaylist: Identifiable, Hashable {
     let coverArt: String?
 }
 
+struct SubsonicArtist: Identifiable, Hashable {
+    let id: String
+    let name: String
+    let albumCount: Int
+}
+
 struct SubsonicSong: Identifiable, Hashable {
     let id: String
     let title: String
@@ -27,6 +33,26 @@ struct SubsonicSong: Identifiable, Hashable {
     let bitRate: Int?
     let coverArt: String?
     var isStarred: Bool
+}
+
+struct SubsonicSearchResults {
+    let songs: [SubsonicSong]
+    let albums: [SubsonicAlbum]
+    let artists: [SubsonicArtist]
+
+    init(
+        songs: [SubsonicSong] = [],
+        albums: [SubsonicAlbum] = [],
+        artists: [SubsonicArtist] = []
+    ) {
+        self.songs = songs
+        self.albums = albums
+        self.artists = artists
+    }
+
+    var isEmpty: Bool {
+        songs.isEmpty && albums.isEmpty && artists.isEmpty
+    }
 }
 
 enum SubsonicLyricsResult {
@@ -122,14 +148,38 @@ struct SubsonicClient {
         return songs.map(makeSong(from:))
     }
 
+    /// 歌手详情及其专辑。
+    func albums(byArtist artistID: String) async throws -> [SubsonicAlbum] {
+        let resp: SubsonicResponse = try await request(
+            "getArtist",
+            params: ["id": artistID]
+        )
+        return (resp.artist?.album ?? []).map(makeAlbum(from:))
+    }
+
     /// 搜索
-    func search(query: String) async throws -> [SubsonicSong] {
+    func search(query: String) async throws -> SubsonicSearchResults {
         let resp: SubsonicResponse = try await request(
             "search3",
-            params: ["query": query, "songCount": "100"]
+            params: [
+                "query": query,
+                "songCount": "100",
+                "albumCount": "50",
+                "artistCount": "50",
+            ]
         )
-        let songs = resp.searchResult3?.song ?? []
-        return songs.map(makeSong(from:))
+        let result = resp.searchResult3
+        return SubsonicSearchResults(
+            songs: (result?.song ?? []).map(makeSong(from:)),
+            albums: (result?.album ?? []).map(makeAlbum(from:)),
+            artists: (result?.artist ?? []).map { artist in
+                SubsonicArtist(
+                    id: artist.id,
+                    name: artist.name,
+                    albumCount: max(artist.albumCount ?? 0, 0)
+                )
+            }
+        )
     }
 
     /// 返回当前账号标记为喜欢的歌曲。
@@ -238,6 +288,16 @@ struct SubsonicClient {
             bitRate: entry.bitRate,
             coverArt: entry.coverArt,
             isStarred: entry.starred != nil
+        )
+    }
+
+    private func makeAlbum(from entry: AlbumEntry) -> SubsonicAlbum {
+        SubsonicAlbum(
+            id: entry.id,
+            title: entry.title ?? entry.name ?? "未命名专辑",
+            artist: entry.artist ?? "",
+            coverArt: entry.coverArt,
+            year: entry.year
         )
     }
 
@@ -357,6 +417,7 @@ struct SubsonicResponse: Decodable {
     let version: String?
     let albumList2: AlbumList2?
     let album: AlbumDetail?
+    let artist: ArtistDetail?
     let playlists: Playlists?
     let playlist: PlaylistDetail?
     let searchResult3: SearchResult3?
@@ -385,6 +446,9 @@ struct AlbumEntry: Decodable {
 struct AlbumDetail: Decodable {
     let song: [SongEntry]?
 }
+struct ArtistDetail: Decodable {
+    let album: [AlbumEntry]?
+}
 struct Playlists: Decodable {
     let playlist: [PlaylistEntry]?
 }
@@ -399,6 +463,13 @@ struct PlaylistDetail: Decodable {
 }
 struct SearchResult3: Decodable {
     let song: [SongEntry]?
+    let album: [AlbumEntry]?
+    let artist: [ArtistEntry]?
+}
+struct ArtistEntry: Decodable {
+    let id: String
+    let name: String
+    let albumCount: Int?
 }
 struct Starred2: Decodable {
     let song: [SongEntry]?
