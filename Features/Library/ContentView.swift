@@ -75,7 +75,7 @@ struct ContentView: View {
         let recentItems = history.recentItems()
         let mostPlayedItems = history.mostPlayedItems()
 
-        List {
+        return List {
             if player.currentSong != nil {
                 continuePlayingSection
             }

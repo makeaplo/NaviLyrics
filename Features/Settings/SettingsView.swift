@@ -159,18 +159,7 @@ struct SettingsView: View {
                     }
                 }
 
-                Section("本机播放记录") {
-                    LabeledContent(
-                        "已记录歌曲",
-                        value: "\(history.items.count) 首"
-                    )
-                    Button("清除本机播放记录", role: .destructive) {
-                        showHistoryClearConfirmation = true
-                    }
-                    .disabled(history.items.isEmpty)
-                } footer: {
-                    Text("播放记录只保存在本机，不会上传到 Navidrome。")
-                }
+                historySection
 
                 accountActionsSection
             }
@@ -240,6 +229,24 @@ struct SettingsView: View {
                 .foregroundStyle(.orange)
             }
         }
+    }
+
+    private var historySection: some View {
+        Section {
+            LabeledContent("已记录歌曲", value: historyCountText)
+            Button("清除本机播放记录", role: .destructive) {
+                showHistoryClearConfirmation = true
+            }
+            .disabled(history.items.isEmpty)
+        } header: {
+            Text("本机播放记录")
+        } footer: {
+            Text("播放记录只保存在本机，不会上传到 Navidrome。")
+        }
+    }
+
+    private var historyCountText: String {
+        String(history.items.count) + " 首"
     }
 
     private func timingSlider(
