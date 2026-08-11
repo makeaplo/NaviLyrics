@@ -36,9 +36,7 @@ struct ArtistView: View {
             } else {
                 Section("专辑 · \(albums.count)") {
                     ForEach(albums) { album in
-                        NavigationLink {
-                            AlbumView(client: client, album: album)
-                        } label: {
+                        NavigationLink(value: album) {
                             AlbumRow(
                                 album: album,
                                 artworkURL: client.coverURL(

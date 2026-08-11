@@ -4,6 +4,7 @@ struct FavoritesView: View {
     let client: SubsonicClient
     @Environment(FavoritesStore.self) private var favorites
     @Environment(PlayerStore.self) private var player
+    @Environment(\.playerPresentation) private var playerPresentation
     @State private var loadRevision = 0
 
     var body: some View {
@@ -97,6 +98,7 @@ struct FavoritesView: View {
             )
         }
         player.load(queue: queue, startingAt: index)
+        playerPresentation.wrappedValue = true
     }
 
     private func toggleFavorite(_ song: SubsonicSong) {

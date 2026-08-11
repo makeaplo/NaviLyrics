@@ -5,7 +5,7 @@ struct ContentView: View {
     @Environment(PlayerStore.self) private var player
     @Environment(ListeningHistoryStore.self) private var history
     @Environment(FavoritesStore.self) private var favorites
-    private let onOpenPlayer: () -> Void
+    @Environment(\.playerPresentation) private var playerPresentation
     @State private var showSettings = false
     @State private var searchText = ""
     @State private var searchResults = SubsonicSearchResults()
@@ -14,59 +14,46 @@ struct ContentView: View {
     @State private var activeSearchQuery = ""
     @State private var searchRevision = 0
 
-    init(onOpenPlayer: @escaping () -> Void = {}) {
-        self.onOpenPlayer = onOpenPlayer
-    }
-
     var body: some View {
-        NavigationStack {
-            Group {
-                if let client = session.client {
-                    libraryContent(client: client)
-                        .navigationDestination(
-                            for: SubsonicAlbum.self
-                        ) { album in
-                            AlbumView(client: client, album: album)
-                        }
-                        .task(id: searchRequest) {
-                            await searchIfNeeded(using: client)
-                        }
-                        .task(id: favorites.activeServerURL) {
-                            guard !favorites.activeServerURL.isEmpty else {
-                                return
-                            }
-                            await favorites.refresh(using: client)
-                        }
-                } else {
-                    ProgressView("正在连接音乐库…")
-                }
-            }
-            .navigationTitle(
-                normalizedSearchQuery.isEmpty ? "音乐库" : "搜索"
-            )
-            .searchable(
-                text: $searchText,
-                placement: .navigationBarDrawer(displayMode: .always),
-                prompt: "搜索歌曲、歌手或专辑"
-            )
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showSettings = true
-                    } label: {
-                        Label("设置", systemImage: "gearshape")
+        Group {
+            if let client = session.client {
+                libraryContent(client: client)
+                    .task(id: searchRequest) {
+                        await searchIfNeeded(using: client)
                     }
-                }
+                    .task(id: favorites.activeServerURL) {
+                        guard !favorites.activeServerURL.isEmpty else {
+                            return
+                        }
+                        await favorites.refresh(using: client)
+                    }
+            } else {
+                ProgressView("正在连接音乐库…")
             }
-            .safeAreaInset(edge: .top, spacing: 0) {
-                if let message = session.libraryErrorMessage {
-                    libraryErrorBanner(message: message)
+        }
+        .navigationTitle(
+            normalizedSearchQuery.isEmpty ? "音乐库" : "搜索"
+        )
+        .searchable(
+            text: $searchText,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: "搜索歌曲、歌手或专辑"
+        )
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showSettings = true
+                } label: {
+                    Label("设置", systemImage: "gearshape")
                 }
             }
         }
-        .sheet(isPresented: $showSettings) {
-            SettingsView()
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if let message = session.libraryErrorMessage {
+                libraryErrorBanner(message: message)
+            }
         }
+        .sheet(isPresented: $showSettings) { SettingsView() }
     }
 
     @ViewBuilder
@@ -143,9 +130,7 @@ struct ContentView: View {
 
     private func favoritesSection(client: SubsonicClient) -> some View {
         Section("我的收藏") {
-            NavigationLink {
-                FavoritesView(client: client)
-            } label: {
+            NavigationLink(value: LibraryRoute.favorites) {
                 Label("喜欢的歌曲", systemImage: "heart.fill")
                 Spacer()
                 if !favorites.songs.isEmpty {
@@ -159,9 +144,7 @@ struct ContentView: View {
 
     private func playlistsSection(client: SubsonicClient) -> some View {
         Section("播放内容") {
-            NavigationLink {
-                PlaylistsView(client: client)
-            } label: {
+            NavigationLink(value: LibraryRoute.playlists) {
                 Label("播放列表", systemImage: "music.note.list")
             }
         }
@@ -171,7 +154,7 @@ struct ContentView: View {
         Section("继续播放") {
             Button {
                 player.play()
-                onOpenPlayer()
+                playerPresentation.wrappedValue = true
             } label: {
                 HStack(spacing: 12) {
                     LibraryArtwork(
@@ -242,9 +225,7 @@ struct ContentView: View {
                 Text(title)
                 Spacer()
                 if !items.isEmpty {
-                    NavigationLink {
-                        SmartSongListView(kind: kind, client: client)
-                    } label: {
+                    NavigationLink(value: LibraryRoute.history(kind)) {
                         Text("查看全部")
                             .font(.caption.weight(.semibold))
                     }
@@ -266,6 +247,7 @@ struct ContentView: View {
             queue: playbackQueue(from: items, using: client),
             startingAt: index
         )
+        playerPresentation.wrappedValue = true
     }
 
     private func playbackQueue(
@@ -347,9 +329,7 @@ struct ContentView: View {
                 if !searchResults.albums.isEmpty {
                     Section("专辑 · \(searchResults.albums.count)") {
                         ForEach(searchResults.albums) { album in
-                            NavigationLink {
-                                AlbumView(client: client, album: album)
-                            } label: {
+                            NavigationLink(value: album) {
                                 AlbumRow(
                                     album: album,
                                     artworkURL: client.coverURL(
@@ -365,9 +345,7 @@ struct ContentView: View {
                 if !searchResults.artists.isEmpty {
                     Section("艺人 · \(searchResults.artists.count)") {
                         ForEach(searchResults.artists) { artist in
-                            NavigationLink {
-                                ArtistView(client: client, artist: artist)
-                            } label: {
+                            NavigationLink(value: artist) {
                                 ArtistRow(artist: artist)
                             }
                         }
@@ -466,6 +444,7 @@ struct ContentView: View {
             )
         }
         player.load(queue: queue, startingAt: index)
+        playerPresentation.wrappedValue = true
     }
 
     private func toggleFavorite(
@@ -506,6 +485,7 @@ struct SmartSongListView: View {
     let client: SubsonicClient
     @Environment(ListeningHistoryStore.self) private var history
     @Environment(PlayerStore.self) private var player
+    @Environment(\.playerPresentation) private var playerPresentation
 
     private var items: [ListeningHistoryItem] {
         switch kind {
@@ -573,6 +553,7 @@ struct SmartSongListView: View {
             )
         }
         player.load(queue: queue, startingAt: index)
+        playerPresentation.wrappedValue = true
     }
 }
 

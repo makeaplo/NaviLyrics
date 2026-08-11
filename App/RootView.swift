@@ -1,5 +1,13 @@
 import SwiftUI
 
+enum LibraryRoute: Hashable {
+    case favorites
+    case playlists
+    case history(ListeningHistoryListKind)
+}
+
+private struct PlayerRoute: Hashable { }
+
 struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(AppSettings.self) private var settings
@@ -7,7 +15,8 @@ struct RootView: View {
     @Environment(NavidromeSession.self) private var session
     @Environment(ListeningHistoryStore.self) private var history
     @Environment(FavoritesStore.self) private var favorites
-    @State private var selectedTab: AppTab = .library
+    @State private var isPlayerPresented = false
+    @State private var navigationPath = NavigationPath()
 
     var body: some View {
         Group {
@@ -32,17 +41,18 @@ struct RootView: View {
             if status == .connected {
                 history.activate(serverURL: settings.serverURL)
                 favorites.activate(serverURL: settings.serverURL)
-                if let client = session.client,
-                   player.restoreLastPlayback(
-                    for: settings.serverURL,
-                    using: client
-                   ) {
-                    selectedTab = .player
+                if let client = session.client {
+                    player.restoreLastPlayback(
+                        for: settings.serverURL,
+                        using: client
+                    )
                 }
             } else {
                 player.reset()
                 history.deactivate()
                 favorites.deactivate()
+                isPlayerPresented = false
+                navigationPath = NavigationPath()
             }
         }
         .onChange(of: player.qualifiedPlayEvent?.id) { _, _ in
@@ -65,31 +75,54 @@ struct RootView: View {
     }
 
     private var authenticatedContent: some View {
-        TabView(selection: $selectedTab) {
-            ContentView {
-                selectedTab = .player
+        NavigationStack(path: $navigationPath) {
+            ContentView()
+                .navigationDestination(for: SubsonicAlbum.self) { album in
+                    if let client = session.client {
+                        AlbumView(client: client, album: album)
+                    }
+                }
+                .navigationDestination(for: SubsonicArtist.self) { artist in
+                    if let client = session.client {
+                        ArtistView(client: client, artist: artist)
+                    }
+                }
+                .navigationDestination(for: SubsonicPlaylist.self) { playlist in
+                    if let client = session.client {
+                        PlaylistDetailView(
+                            playlist: playlist,
+                            client: client
+                        )
+                    }
+                }
+                .navigationDestination(for: LibraryRoute.self) { route in
+                    if let client = session.client {
+                        switch route {
+                        case .favorites:
+                            FavoritesView(client: client)
+                        case .playlists:
+                            PlaylistsView(client: client)
+                        case let .history(kind):
+                            SmartSongListView(kind: kind, client: client)
+                        }
+                    }
+                }
+                .navigationDestination(for: PlayerRoute.self) { _ in
+                    PlayerView()
+                }
+        }
+        .environment(\.playerPresentation, $isPlayerPresented)
+        .onChange(of: isPlayerPresented) { _, isPresented in
+            if isPresented {
+                navigationPath.append(PlayerRoute())
             }
-                .tabItem {
-                    Label("音乐库", systemImage: "music.note.list")
-                }
-                .tag(AppTab.library)
-            PlayerView()
-                .tabItem {
-                    Label("播放", systemImage: "play.circle")
-                }
-                .tag(AppTab.player)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if selectedTab != .player,
+            if !isPlayerPresented,
                player.currentSong != nil {
                 MiniPlayerBar {
-                    selectedTab = .player
+                    isPlayerPresented = true
                 }
-            }
-        }
-        .onChange(of: player.currentSong?.id) { _, songID in
-            if songID != nil {
-                selectedTab = .player
             }
         }
     }
@@ -172,7 +205,13 @@ private struct MiniPlayerBar: View {
     }
 }
 
-private enum AppTab: Hashable {
-    case library
-    case player
+private struct PlayerPresentationKey: EnvironmentKey {
+    static let defaultValue = Binding<Bool>.constant(false)
+}
+
+extension EnvironmentValues {
+    var playerPresentation: Binding<Bool> {
+        get { self[PlayerPresentationKey.self] }
+        set { self[PlayerPresentationKey.self] = newValue }
+    }
 }

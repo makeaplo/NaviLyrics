@@ -5,6 +5,7 @@ struct AlbumView: View {
     let album: SubsonicAlbum
     @Environment(PlayerStore.self) private var player
     @Environment(FavoritesStore.self) private var favorites
+    @Environment(\.playerPresentation) private var playerPresentation
 
     @State private var songs: [SubsonicSong] = []
     @State private var isLoading = true
@@ -147,11 +148,13 @@ struct AlbumView: View {
     private func play(_ song: SubsonicSong, at index: Int) {
         guard songs.indices.contains(index) else { return }
         player.load(queue: playbackQueue(from: songs), startingAt: index)
+        playerPresentation.wrappedValue = true
     }
 
     private func playAll() {
         guard !songs.isEmpty else { return }
         player.load(queue: playbackQueue(from: songs), startingAt: 0)
+        playerPresentation.wrappedValue = true
     }
 
     private func shufflePlay() {
@@ -161,6 +164,7 @@ struct AlbumView: View {
             queue: playbackQueue(from: shuffledSongs),
             startingAt: 0
         )
+        playerPresentation.wrappedValue = true
     }
 
     private func toggleFavorite(_ song: SubsonicSong) {

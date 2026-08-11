@@ -39,12 +39,7 @@ struct PlaylistsView: View {
             } else {
                 Section("播放列表 · \(playlists.count)") {
                     ForEach(playlists) { playlist in
-                        NavigationLink {
-                            PlaylistDetailView(
-                                playlist: playlist,
-                                client: client
-                            )
-                        } label: {
+                        NavigationLink(value: playlist) {
                             PlaylistRow(
                                 playlist: playlist,
                                 artworkURL: client.coverURL(
@@ -164,6 +159,7 @@ struct PlaylistDetailView: View {
 
     @Environment(PlayerStore.self) private var player
     @Environment(FavoritesStore.self) private var favorites
+    @Environment(\.playerPresentation) private var playerPresentation
     @State private var songs: [SubsonicSong] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
@@ -370,17 +366,20 @@ struct PlaylistDetailView: View {
     private func play(at index: Int) {
         guard songs.indices.contains(index) else { return }
         player.load(queue: playbackQueue(from: songs), startingAt: index)
+        playerPresentation.wrappedValue = true
     }
 
     private func playAll() {
         guard !songs.isEmpty else { return }
         player.load(queue: playbackQueue(from: songs), startingAt: 0)
+        playerPresentation.wrappedValue = true
     }
 
     private func shufflePlay() {
         let shuffledSongs = songs.shuffled()
         guard !shuffledSongs.isEmpty else { return }
         player.load(queue: playbackQueue(from: shuffledSongs), startingAt: 0)
+        playerPresentation.wrappedValue = true
     }
 
     private func playbackQueue(
