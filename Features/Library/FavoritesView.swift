@@ -8,6 +8,22 @@ struct FavoritesView: View {
 
     var body: some View {
         List {
+            if let errorMessage = favorites.errorMessage,
+               !favorites.songs.isEmpty {
+                HStack(spacing: 10) {
+                    Image(systemName: "wifi.exclamationmark")
+                        .foregroundStyle(.orange)
+                    Text(errorMessage)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                    Spacer(minLength: 8)
+                    Button("重试") { loadRevision &+= 1 }
+                        .font(.footnote.weight(.semibold))
+                }
+                .listRowBackground(Color.clear)
+            }
+
             if favorites.isLoading && favorites.songs.isEmpty {
                 HStack {
                     Spacer()

@@ -65,20 +65,10 @@ struct PlayerView: View {
 
     private var songInfo: some View {
         HStack(spacing: 14) {
-            AsyncImage(url: player.currentSong?.artworkURL) { phase in
-                switch phase {
-                case let .success(image):
-                    image.resizable().scaledToFill()
-                case .empty:
-                    artworkPlaceholder.overlay { ProgressView() }
-                case .failure:
-                    artworkPlaceholder
-                @unknown default:
-                    artworkPlaceholder
-                }
-            }
-            .frame(width: 54, height: 54)
-            .clipShape(RoundedRectangle(cornerRadius: 9))
+            LibraryArtwork(
+                url: player.currentSong?.artworkURL,
+                size: 54
+            )
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(player.currentSong?.title ?? "未在播放")
@@ -103,15 +93,6 @@ struct PlayerView: View {
             .accessibilityLabel("播放队列")
         }
         .padding(.vertical, 10)
-    }
-
-    private var artworkPlaceholder: some View {
-        RoundedRectangle(cornerRadius: 9)
-            .fill(.white.opacity(0.12))
-            .overlay {
-                Image(systemName: "music.note")
-                    .foregroundStyle(.white.opacity(0.55))
-            }
     }
 
     private var songSubtitle: String {

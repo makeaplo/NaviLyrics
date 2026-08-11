@@ -298,7 +298,7 @@ struct PlaylistDetailView: View {
                     Text(playlist.name)
                         .font(.title3.bold())
                         .lineLimit(3)
-                    Text("\(max(songs.count, playlist.songCount)) 首歌曲")
+                    Text("\(displayedSongCount) 首歌曲")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -341,6 +341,10 @@ struct PlaylistDetailView: View {
         } catch {
             errorMessage = "加载失败：\(error.localizedDescription)"
         }
+    }
+
+    private var displayedSongCount: Int {
+        isLoading ? max(songs.count, playlist.songCount) : songs.count
     }
 
     private func removeSong(at index: Int) async {

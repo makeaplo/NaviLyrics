@@ -50,7 +50,7 @@ final class FavoritesStore {
         } catch is CancellationError {
             return
         } catch {
-            errorMessage = "收藏加载失败：(error.localizedDescription)"
+            errorMessage = "收藏加载失败：\(error.localizedDescription)"
         }
     }
 
@@ -97,7 +97,7 @@ final class FavoritesStore {
             errorMessage = nil
             return shouldFavorite
         } catch {
-            errorMessage = "收藏操作失败：(error.localizedDescription)"
+            errorMessage = "收藏操作失败：\(error.localizedDescription)"
             return nil
         }
     }
@@ -116,7 +116,7 @@ final class FavoritesStore {
 
         let candidate = trimmed.contains("://")
             ? trimmed
-            : "http://(trimmed)"
+            : "http://\(trimmed)"
         guard var components = URLComponents(string: candidate),
               let host = components.host?.lowercased() else {
             return trimmed
@@ -135,7 +135,7 @@ final class FavoritesStore {
                 in: CharacterSet(charactersIn: "/")
             )
             if !components.path.isEmpty {
-                components.path = "/(components.path)"
+                components.path = "/\(components.path)"
             }
         }
         return components.string ?? candidate.lowercased()

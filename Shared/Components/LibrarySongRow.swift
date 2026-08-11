@@ -56,7 +56,7 @@ struct LibrarySongRow: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(
-                "(song.title)，(song.artist)，(Self.timeString(song.duration))"
+                "\(song.title)，\(song.artist)，\(Self.timeString(song.duration))"
             )
             .accessibilityHint("播放并从此处继续列表")
 

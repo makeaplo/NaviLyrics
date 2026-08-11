@@ -111,22 +111,10 @@ private struct MiniPlayerBar: View {
             HStack(spacing: 12) {
                 Button(action: onOpenPlayer) {
                     HStack(spacing: 10) {
-                        AsyncImage(
-                            url: player.currentSong?.artworkURL
-                        ) { phase in
-                            if case let .success(image) = phase {
-                                image.resizable().scaledToFill()
-                            } else {
-                                RoundedRectangle(cornerRadius: 7)
-                                    .fill(.quaternary)
-                                    .overlay {
-                                        Image(systemName: "music.note")
-                                            .foregroundStyle(.secondary)
-                                    }
-                            }
-                        }
-                        .frame(width: 42, height: 42)
-                        .clipShape(RoundedRectangle(cornerRadius: 7))
+                        LibraryArtwork(
+                            url: player.currentSong?.artworkURL,
+                            size: 42
+                        )
 
                         VStack(alignment: .leading, spacing: 2) {
                             Text(player.currentSong?.title ?? "")

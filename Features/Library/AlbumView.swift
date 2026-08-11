@@ -57,25 +57,13 @@ struct AlbumView: View {
     private var header: some View {
         VStack(spacing: 18) {
             HStack(spacing: 16) {
-                AsyncImage(
+                LibraryArtwork(
                     url: client.coverURL(
                         coverArt: album.coverArt,
                         size: 400
-                    )
-                ) { phase in
-                    switch phase {
-                    case let .success(image):
-                        image.resizable().scaledToFill()
-                    case .empty:
-                        artworkPlaceholder.overlay { ProgressView() }
-                    case .failure:
-                        artworkPlaceholder
-                    @unknown default:
-                        artworkPlaceholder
-                    }
-                }
-                .frame(width: 108, height: 108)
-                .clipShape(RoundedRectangle(cornerRadius: 14))
+                    ),
+                    size: 108
+                )
                 .shadow(color: .black.opacity(0.14), radius: 12, y: 6)
 
                 VStack(alignment: .leading, spacing: 6) {
@@ -116,16 +104,6 @@ struct AlbumView: View {
             }
         }
         .padding(.vertical, 8)
-    }
-
-    private var artworkPlaceholder: some View {
-        RoundedRectangle(cornerRadius: 14)
-            .fill(.quaternary)
-            .overlay {
-                Image(systemName: "music.note")
-                    .font(.title)
-                    .foregroundStyle(.secondary)
-            }
     }
 
     private func songRow(
