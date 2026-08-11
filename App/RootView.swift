@@ -55,7 +55,9 @@ struct RootView: View {
 
     private var authenticatedContent: some View {
         TabView(selection: $selectedTab) {
-            ContentView()
+            ContentView {
+                selectedTab = .player
+            }
                 .tabItem {
                     Label("音乐库", systemImage: "music.note.list")
                 }
