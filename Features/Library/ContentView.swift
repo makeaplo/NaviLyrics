@@ -617,7 +617,7 @@ private struct LibrarySearchRequest: Hashable {
     let revision: Int
 }
 
-private struct AlbumRow: View {
+struct AlbumRow: View {
     let album: SubsonicAlbum
     let artworkURL: URL?
 

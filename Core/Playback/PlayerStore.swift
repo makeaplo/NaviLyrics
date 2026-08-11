@@ -1067,15 +1067,21 @@ final class PlayerStore {
                 ?? song.artworkURL.flatMap({
                     Self.artworkCache.object(forKey: $0 as NSURL)
                 }) {
-            info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(
-                boundsSize: artwork.size
-            ) { _ in artwork }
+            info[MPMediaItemPropertyArtwork] = Self.makeMediaArtwork(
+                from: artwork
+            )
         }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
         MPNowPlayingInfoCenter.default().playbackState =
             isPlaying ? .playing : .paused
         lastNowPlayingInfoProgress = elapsed
         updateRemoteCommandAvailability()
+    }
+
+    private nonisolated(unsafe) static func makeMediaArtwork(
+        from image: UIImage
+    ) -> MPMediaItemArtwork {
+        MPMediaItemArtwork(boundsSize: image.size) { _ in image }
     }
 
     private static func normalizedServerURL(_ value: String) -> String {
