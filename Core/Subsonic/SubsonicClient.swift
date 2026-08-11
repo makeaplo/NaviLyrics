@@ -19,6 +19,7 @@ struct SubsonicSong: Identifiable, Hashable {
     let suffix: String?      // 文件格式 flac/mp3
     let bitRate: Int?
     let coverArt: String?
+    var isStarred: Bool
 }
 
 enum SubsonicLyricsResult {
@@ -86,14 +87,7 @@ struct SubsonicClient {
             params: ["id": albumID]
         )
         let songs = resp.album?.song ?? []
-        return songs.map { s in
-            SubsonicSong(
-                id: s.id, title: s.title, artist: s.artist ?? "",
-                album: s.album ?? "", duration: TimeInterval(s.duration ?? 0),
-                suffix: s.suffix, bitRate: s.bitRate,
-                coverArt: s.coverArt
-            )
-        }
+        return songs.map(makeSong(from:))
     }
 
     /// 搜索
@@ -103,14 +97,24 @@ struct SubsonicClient {
             params: ["query": query, "songCount": "100"]
         )
         let songs = resp.searchResult3?.song ?? []
-        return songs.map { s in
-            SubsonicSong(
-                id: s.id, title: s.title, artist: s.artist ?? "",
-                album: s.album ?? "", duration: TimeInterval(s.duration ?? 0),
-                suffix: s.suffix, bitRate: s.bitRate,
-                coverArt: s.coverArt
-            )
-        }
+        return songs.map(makeSong(from:))
+    }
+
+    /// 返回当前账号标记为喜欢的歌曲。
+    func starredSongs() async throws -> [SubsonicSong] {
+        let resp: SubsonicResponse = try await request(
+            "getStarred2",
+            params: [:]
+        )
+        return (resp.starred2?.song ?? []).map(makeSong(from:))
+    }
+
+    /// 在 Navidrome 中添加或取消歌曲收藏。
+    func setFavorite(songID: String, isFavorite: Bool) async throws {
+        _ = try await request(
+            isFavorite ? "star" : "unstar",
+            params: ["id": songID]
+        )
     }
 
     /// 优先读取 OpenSubsonic 结构化歌词（支持逐字时间），不支持时回退到传统歌词接口。
@@ -189,6 +193,20 @@ struct SubsonicClient {
             URLQueryItem(name: "c", value: clientName),
             URLQueryItem(name: "f", value: "json"),
         ]
+    }
+
+    private func makeSong(from entry: SongEntry) -> SubsonicSong {
+        SubsonicSong(
+            id: entry.id,
+            title: entry.title,
+            artist: entry.artist ?? "",
+            album: entry.album ?? "",
+            duration: TimeInterval(entry.duration ?? 0),
+            suffix: entry.suffix,
+            bitRate: entry.bitRate,
+            coverArt: entry.coverArt,
+            isStarred: entry.starred != nil
+        )
     }
 
     private func request(
@@ -308,6 +326,7 @@ struct SubsonicResponse: Decodable {
     let albumList2: AlbumList2?
     let album: AlbumDetail?
     let searchResult3: SearchResult3?
+    let starred2: Starred2?
     let lyrics: LyricWrapper?
     let lyricsList: LyricsList?
     let error: SubsonicAPIError?
@@ -335,6 +354,9 @@ struct AlbumDetail: Decodable {
 struct SearchResult3: Decodable {
     let song: [SongEntry]?
 }
+struct Starred2: Decodable {
+    let song: [SongEntry]?
+}
 struct SongEntry: Decodable {
     let id: String
     let title: String
@@ -344,6 +366,7 @@ struct SongEntry: Decodable {
     let suffix: String?
     let bitRate: Int?
     let coverArt: String?
+    let starred: String?
 }
 struct LyricWrapper: Decodable {
     let value: String?

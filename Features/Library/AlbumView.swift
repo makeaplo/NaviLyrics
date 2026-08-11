@@ -4,6 +4,7 @@ struct AlbumView: View {
     let client: SubsonicClient
     let album: SubsonicAlbum
     @Environment(PlayerStore.self) private var player
+    @Environment(FavoritesStore.self) private var favorites
 
     @State private var songs: [SubsonicSong] = []
     @State private var isLoading = true
@@ -131,43 +132,23 @@ struct AlbumView: View {
         _ song: SubsonicSong,
         at index: Int
     ) -> some View {
-        Button {
-            play(song, at: index)
-        } label: {
-            HStack(spacing: 10) {
-                Group {
-                    if player.currentSong?.id == song.id {
-                        Image(systemName: "speaker.wave.2.fill")
-                            .foregroundStyle(.tint)
-                    } else {
-                        Text("\(index + 1)")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .font(.caption.monospacedDigit())
-                .frame(width: 26)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(song.title)
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    Text(songMetadata(song))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 8)
-                Text(timeString(song.duration))
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.tertiary)
-            }
-            .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(
-            "\(song.title)，\(song.artist)，\(timeString(song.duration))"
+        LibrarySongRow(
+            song: song,
+            leadingLabel: player.currentSong?.id == song.id
+                ? nil
+                : "\(index + 1)",
+            leadingSymbol: player.currentSong?.id == song.id
+                ? "speaker.wave.2.fill"
+                : nil,
+            metadata: songMetadata(song),
+            isFavorite: favorites.isFavorite(
+                songID: song.id,
+                fallback: song.isStarred
+            ),
+            isFavoriteUpdating: favorites.isUpdating(songID: song.id),
+            onPlay: { play(song, at: index) },
+            onToggleFavorite: { toggleFavorite(song) }
         )
-        .accessibilityHint("从这首歌开始播放专辑")
     }
 
     private func load() async {
@@ -202,6 +183,12 @@ struct AlbumView: View {
             queue: playbackQueue(from: shuffledSongs),
             startingAt: 0
         )
+    }
+
+    private func toggleFavorite(_ song: SubsonicSong) {
+        Task {
+            _ = await favorites.toggle(song: song, using: client)
+        }
     }
 
     private func playbackQueue(

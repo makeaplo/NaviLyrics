@@ -6,6 +6,7 @@ struct NaviLyricsApp: App {
     @State private var player = PlayerStore()
     @State private var session = NavidromeSession()
     @State private var history = ListeningHistoryStore()
+    @State private var favorites = FavoritesStore()
 
     var body: some Scene {
         WindowGroup {
@@ -14,6 +15,7 @@ struct NaviLyricsApp: App {
                 .environment(player)
                 .environment(session)
                 .environment(history)
+                .environment(favorites)
         }
     }
 }

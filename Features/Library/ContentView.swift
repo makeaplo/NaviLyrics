@@ -4,6 +4,7 @@ struct ContentView: View {
     @Environment(NavidromeSession.self) private var session
     @Environment(PlayerStore.self) private var player
     @Environment(ListeningHistoryStore.self) private var history
+    @Environment(FavoritesStore.self) private var favorites
     private let onOpenPlayer: () -> Void
     @State private var showSettings = false
     @State private var searchText = ""
@@ -29,6 +30,12 @@ struct ContentView: View {
                         }
                         .task(id: searchRequest) {
                             await searchIfNeeded(using: client)
+                        }
+                        .task(id: favorites.activeServerURL) {
+                            guard !favorites.activeServerURL.isEmpty else {
+                                return
+                            }
+                            await favorites.refresh(using: client)
                         }
                 } else {
                     ProgressView("正在连接音乐库…")
@@ -92,6 +99,7 @@ struct ContentView: View {
                 items: mostPlayedItems,
                 client: client
             )
+            favoritesSection(client: client)
 
             if session.albums.isEmpty {
                 ContentUnavailableView(
@@ -128,6 +136,23 @@ struct ContentView: View {
         }
         .refreshable {
             await session.refreshLibrary()
+            await favorites.refresh(using: client)
+        }
+    }
+
+    private func favoritesSection(client: SubsonicClient) -> some View {
+        Section("我的收藏") {
+            NavigationLink {
+                FavoritesView(client: client)
+            } label: {
+                Label("喜欢的歌曲", systemImage: "heart.fill")
+                Spacer()
+                if !favorites.songs.isEmpty {
+                    Text("\(favorites.songs.count) 首")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
     }
 
@@ -280,18 +305,26 @@ struct ContentView: View {
                 Section("歌曲 · \(searchResults.count)") {
                     ForEach(searchResults.indices, id: \.self) { index in
                         let song = searchResults[index]
-                        Button {
-                            playSearchResult(at: index, using: client)
-                        } label: {
-                            SearchSongRow(
-                                song: song,
-                                artworkURL: client.coverURL(
-                                    coverArt: song.coverArt,
-                                    size: 180
-                                )
-                            )
-                        }
-                        .buttonStyle(.plain)
+                        LibrarySongRow(
+                            song: song,
+                            artworkURL: client.coverURL(
+                                coverArt: song.coverArt,
+                                size: 180
+                            ),
+                            isFavorite: favorites.isFavorite(
+                                songID: song.id,
+                                fallback: song.isStarred
+                            ),
+                            isFavoriteUpdating: favorites.isUpdating(
+                                songID: song.id
+                            ),
+                            onPlay: {
+                                playSearchResult(at: index, using: client)
+                            },
+                            onToggleFavorite: {
+                                toggleFavorite(song, using: client)
+                            }
+                        )
                     }
                 }
             }
@@ -387,6 +420,15 @@ struct ContentView: View {
             )
         }
         player.load(queue: queue, startingAt: index)
+    }
+
+    private func toggleFavorite(
+        _ song: SubsonicSong,
+        using client: SubsonicClient
+    ) {
+        Task {
+            _ = await favorites.toggle(song: song, using: client)
+        }
     }
 }
 
@@ -547,74 +589,5 @@ private struct AlbumRow: View {
             }
         }
         .accessibilityElement(children: .combine)
-    }
-}
-
-private struct SearchSongRow: View {
-    let song: SubsonicSong
-    let artworkURL: URL?
-
-    var body: some View {
-        HStack(spacing: 12) {
-            LibraryArtwork(url: artworkURL, size: 48)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(song.title)
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                Text(secondaryText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 8)
-            Text(Self.timeString(song.duration))
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.tertiary)
-        }
-        .contentShape(.rect)
-        .accessibilityElement(children: .combine)
-        .accessibilityHint("播放并从此处继续搜索结果队列")
-    }
-
-    private var secondaryText: String {
-        [song.artist, song.album]
-            .filter { !$0.isEmpty }
-            .joined(separator: " · ")
-    }
-
-    private static func timeString(_ time: TimeInterval) -> String {
-        guard time.isFinite, time > 0 else { return "--:--" }
-        return String(format: "%d:%02d", Int(time) / 60, Int(time) % 60)
-    }
-}
-
-private struct LibraryArtwork: View {
-    let url: URL?
-    let size: CGFloat
-
-    var body: some View {
-        AsyncImage(url: url) { phase in
-            switch phase {
-            case let .success(image):
-                image.resizable().scaledToFill()
-            case .empty:
-                placeholder.overlay { ProgressView().controlSize(.mini) }
-            case .failure:
-                placeholder
-            @unknown default:
-                placeholder
-            }
-        }
-        .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: size * 0.13))
-    }
-
-    private var placeholder: some View {
-        RoundedRectangle(cornerRadius: size * 0.13)
-            .fill(.quaternary)
-            .overlay {
-                Image(systemName: "music.note")
-                    .foregroundStyle(.secondary)
-            }
     }
 }
