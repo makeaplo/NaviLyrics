@@ -4,7 +4,6 @@ struct PlayerView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(PlayerStore.self) private var player
     @Environment(NavidromeSession.self) private var session
-    @Environment(\.playerPresentation) private var playerPresentation
     @State private var lyricsStore: NaviLyricsStore?
     @State private var currentTime: TimeInterval = 0
     @State private var highlightedLyricID: LyricLine.ID?
@@ -46,8 +45,6 @@ struct PlayerView: View {
                 highlightedLyricID = nil
             }
         }
-        .navigationTitle("正在播放")
-        .navigationBarTitleDisplayMode(.inline)
         .preferredColorScheme(.dark)
         .environment(
             \.effectiveLyricsRefreshRate,
@@ -55,9 +52,6 @@ struct PlayerView: View {
         )
         .task(id: lyricsLoadRequest) {
             await loadLyrics()
-        }
-        .onDisappear {
-            playerPresentation.wrappedValue = false
         }
         .sheet(isPresented: $showQueue) {
             PlayerQueueView()

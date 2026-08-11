@@ -6,8 +6,6 @@ enum LibraryRoute: Hashable {
     case history(ListeningHistoryListKind)
 }
 
-private struct PlayerRoute: Hashable { }
-
 struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(AppSettings.self) private var settings
@@ -107,16 +105,8 @@ struct RootView: View {
                         }
                     }
                 }
-                .navigationDestination(for: PlayerRoute.self) { _ in
-                    PlayerView()
-                }
         }
         .environment(\.playerPresentation, $isPlayerPresented)
-        .onChange(of: isPlayerPresented) { _, isPresented in
-            if isPresented {
-                navigationPath.append(PlayerRoute())
-            }
-        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if !isPlayerPresented,
                player.currentSong != nil {
@@ -124,6 +114,12 @@ struct RootView: View {
                     isPlayerPresented = true
                 }
             }
+        }
+        .sheet(isPresented: $isPlayerPresented) {
+            PlayerView()
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(.black)
         }
     }
 }
