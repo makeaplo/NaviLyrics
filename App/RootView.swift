@@ -5,6 +5,7 @@ struct RootView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(PlayerStore.self) private var player
     @Environment(NavidromeSession.self) private var session
+    @Environment(ListeningHistoryStore.self) private var history
     @State private var selectedTab: AppTab = .library
 
     var body: some View {
@@ -28,6 +29,7 @@ struct RootView: View {
         }
         .onChange(of: session.status) { _, status in
             if status == .connected {
+                history.activate(serverURL: settings.serverURL)
                 if let client = session.client,
                    player.restoreLastPlayback(
                     for: settings.serverURL,
@@ -37,7 +39,12 @@ struct RootView: View {
                 }
             } else {
                 player.reset()
+                history.deactivate()
             }
+        }
+        .onChange(of: player.qualifiedPlayEvent?.id) { _, _ in
+            guard let event = player.qualifiedPlayEvent else { return }
+            history.record(event, for: settings.serverURL)
         }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active {

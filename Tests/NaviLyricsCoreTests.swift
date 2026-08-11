@@ -90,4 +90,84 @@ final class NaviLyricsCoreTests: XCTestCase {
 
         XCTAssertEqual(song.duration, 0)
     }
+
+    @MainActor
+    func testListeningHistoryTracksRecentAndMostPlayedSongs() throws {
+        let suiteName = "NaviLyricsCoreTests.history.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let store = ListeningHistoryStore(defaults: defaults)
+        let firstSong = try makeHistorySong(id: "first")
+        let secondSong = try makeHistorySong(id: "second")
+        let serverURL = "http://music.example:4533/"
+
+        store.record(
+            PlaybackHistoryEvent(
+                song: firstSong,
+                playedAt: Date(timeIntervalSince1970: 100)
+            ),
+            for: serverURL
+        )
+        store.record(
+            PlaybackHistoryEvent(
+                song: secondSong,
+                playedAt: Date(timeIntervalSince1970: 200)
+            ),
+            for: serverURL
+        )
+        store.record(
+            PlaybackHistoryEvent(
+                song: firstSong,
+                playedAt: Date(timeIntervalSince1970: 300)
+            ),
+            for: serverURL
+        )
+
+        XCTAssertEqual(store.recentItems().map(\.id), ["first", "second"])
+        XCTAssertEqual(store.mostPlayedItems().first?.id, "first")
+        XCTAssertEqual(store.items.first(where: { $0.id == "first" })?.playCount, 2)
+    }
+
+    @MainActor
+    func testListeningHistorySeparatesServersAndPersists() throws {
+        let suiteName = "NaviLyricsCoreTests.history.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let song = try makeHistorySong(id: "song")
+        let firstServer = "https://music.example:4533/"
+        let secondServer = "https://other.example:4533"
+
+        let firstStore = ListeningHistoryStore(defaults: defaults)
+        firstStore.record(
+            PlaybackHistoryEvent(song: song, playedAt: Date()),
+            for: firstServer
+        )
+        firstStore.activate(serverURL: secondServer)
+        XCTAssertTrue(firstStore.items.isEmpty)
+
+        let secondStore = ListeningHistoryStore(defaults: defaults)
+        secondStore.activate(serverURL: firstServer)
+        XCTAssertEqual(secondStore.items.map(\.id), ["song"])
+
+        secondStore.clearCurrentServerHistory()
+        XCTAssertTrue(secondStore.items.isEmpty)
+    }
+
+    private func makeHistorySong(id: String) throws -> NowPlayingSong {
+        let streamURL = try XCTUnwrap(
+            URL(string: "https://music.example.com/stream/\(id)")
+        )
+        return NowPlayingSong(
+            id: id,
+            title: "歌曲 \(id)",
+            artist: "歌手",
+            album: "专辑",
+            duration: 180,
+            streamURL: streamURL,
+            artworkURL: nil,
+            artworkIdentifier: "cover-\(id)"
+        )
+    }
 }

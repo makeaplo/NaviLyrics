@@ -5,9 +5,11 @@ struct SettingsView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(NavidromeSession.self) private var session
     @Environment(PlayerStore.self) private var player
+    @Environment(ListeningHistoryStore.self) private var history
     @Environment(\.dismiss) private var dismiss
     @State private var showSignOutConfirmation = false
     @State private var showResetConfirmation = false
+    @State private var showHistoryClearConfirmation = false
 
     var body: some View {
         @Bindable var settings = settings
@@ -157,6 +159,19 @@ struct SettingsView: View {
                     }
                 }
 
+                Section("本机播放记录") {
+                    LabeledContent(
+                        "已记录歌曲",
+                        value: "\(history.items.count) 首"
+                    )
+                    Button("清除本机播放记录", role: .destructive) {
+                        showHistoryClearConfirmation = true
+                    }
+                    .disabled(history.items.isEmpty)
+                } footer: {
+                    Text("播放记录只保存在本机，不会上传到 Navidrome。")
+                }
+
                 accountActionsSection
             }
             .navigationTitle("设置")
@@ -181,6 +196,7 @@ struct SettingsView: View {
                 titleVisibility: .visible
             ) {
                 Button("退出并清除账号", role: .destructive) {
+                    history.clearCurrentServerHistory()
                     player.reset(clearsPersistedState: true)
                     session.signOut(settings: settings)
                     dismiss()
@@ -188,6 +204,18 @@ struct SettingsView: View {
                 Button("取消", role: .cancel) {}
             } message: {
                 Text("之后必须重新验证服务器才能使用 NaviLyrics。")
+            }
+            .confirmationDialog(
+                "清除本机播放记录？",
+                isPresented: $showHistoryClearConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("清除播放记录", role: .destructive) {
+                    history.clearCurrentServerHistory()
+                }
+                Button("取消", role: .cancel) {}
+            } message: {
+                Text("这只会清除当前 Navidrome 服务器在本机的播放记录。")
             }
         }
     }

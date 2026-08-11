@@ -122,6 +122,7 @@ final class PlayerStore {
     private(set) var currentSong: NowPlayingSong?
     private(set) var queue: [NowPlayingSong] = []
     private(set) var queueIndex: Int?
+    private(set) var qualifiedPlayEvent: PlaybackHistoryEvent?
     /// 当前播放进度（秒），由时间观察器持续更新，歌词视图 onChange 依赖
     private(set) var progress: TimeInterval = 0
 
@@ -149,6 +150,9 @@ final class PlayerStore {
     private var isRestoringPlayback = false
     private var shouldResumeAfterInterruption = false
     private var playbackGeneration = 0
+    private var accumulatedPlaybackTime: TimeInterval = 0
+    private var lastObservedProgress: TimeInterval?
+    private var hasQualifiedCurrentPlay = false
 
     init() {
         prepareAudioSession()
@@ -201,6 +205,9 @@ final class PlayerStore {
         isPlaying = false
         isBuffering = false
         playbackErrorMessage = nil
+        accumulatedPlaybackTime = 0
+        lastObservedProgress = nil
+        hasQualifiedCurrentPlay = false
 
         let item = AVPlayerItem(url: song.streamURL)
         let newPlayer = AVPlayer(playerItem: item)
@@ -357,6 +364,7 @@ final class PlayerStore {
         if duration > 0, progress >= duration - 0.25 {
             seek(to: 0)
         }
+        lastObservedProgress = estimatedProgress()
         activateAudioSession()
         playbackErrorMessage = nil
         player.play()
@@ -368,6 +376,7 @@ final class PlayerStore {
 
     func pause() {
         guard currentSong != nil else { return }
+        lastObservedProgress = estimatedProgress()
         player?.pause()
         isPlaying = false
         isBuffering = false
@@ -422,6 +431,7 @@ final class PlayerStore {
         let upperBound = duration > 0 ? duration : max(time, 0)
         let target = min(max(time, 0), upperBound)
         progress = target
+        lastObservedProgress = target
         let cmTime = CMTime(seconds: target, preferredTimescale: 600)
         player.seek(to: cmTime)
         seekRevision &+= 1
@@ -462,7 +472,17 @@ final class PlayerStore {
                       self.playbackGeneration == generation else {
                     return
                 }
-                self.progress = max(seconds, 0)
+                let normalizedSeconds = max(seconds, 0)
+                if self.isPlaying,
+                   let previous = self.lastObservedProgress {
+                    let delta = normalizedSeconds - previous
+                    if delta > 0, delta <= 2 {
+                        self.accumulatedPlaybackTime += delta
+                    }
+                }
+                self.lastObservedProgress = normalizedSeconds
+                self.progress = normalizedSeconds
+                self.recordQualifiedPlayIfNeeded()
                 self.persistPlaybackState()
                 self.updateNowPlayingInfo()
             }
@@ -572,6 +592,30 @@ final class PlayerStore {
             "播放失败：\($0)"
         } ?? "播放失败，请检查网络或音频格式"
         updateNowPlayingInfo(force: true)
+    }
+
+    private func recordQualifiedPlayIfNeeded() {
+        guard !hasQualifiedCurrentPlay,
+              isPlaying,
+              let currentSong else {
+            return
+        }
+
+        let qualificationThreshold: TimeInterval
+        if duration.isFinite, duration > 0 {
+            qualificationThreshold = min(30, max(duration * 0.5, 1))
+        } else {
+            qualificationThreshold = 30
+        }
+        guard accumulatedPlaybackTime >= qualificationThreshold else {
+            return
+        }
+
+        hasQualifiedCurrentPlay = true
+        qualifiedPlayEvent = PlaybackHistoryEvent(
+            song: currentSong,
+            playedAt: Date()
+        )
     }
 
     private func tearDownPlayer() {
