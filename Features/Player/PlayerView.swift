@@ -380,42 +380,57 @@ private struct PlayerQueueView: View {
                         systemImage: "list.bullet"
                     )
                 } else {
-                    List(player.queue.indices, id: \.self) { index in
-                        let song = player.queue[index]
-                        Button {
-                            player.playQueueItem(at: index)
-                            dismiss()
-                        } label: {
-                            HStack(spacing: 12) {
-                                if player.queueIndex == index {
-                                    Image(systemName: "speaker.wave.2.fill")
-                                        .foregroundStyle(Color.accentColor)
-                                        .frame(width: 22)
-                                } else {
-                                    Text("\(index + 1)")
-                                        .font(.caption.monospacedDigit())
-                                        .foregroundStyle(.secondary)
-                                        .frame(width: 22)
+                    List {
+                        ForEach(player.queue.indices, id: \.self) { index in
+                            let song = player.queue[index]
+                            Button {
+                                player.playQueueItem(at: index)
+                                dismiss()
+                            } label: {
+                                HStack(spacing: 12) {
+                                    if player.queueIndex == index {
+                                        Image(systemName: "speaker.wave.2.fill")
+                                            .foregroundStyle(Color.accentColor)
+                                            .frame(width: 22)
+                                    } else {
+                                        Text("\(index + 1)")
+                                            .font(.caption.monospacedDigit())
+                                            .foregroundStyle(.secondary)
+                                            .frame(width: 22)
+                                    }
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(song.title)
+                                            .foregroundStyle(.primary)
+                                            .lineLimit(1)
+                                        Text(song.artist)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    }
                                 }
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(song.title)
-                                        .foregroundStyle(.primary)
-                                        .lineLimit(1)
-                                    Text(song.artist)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
+                                .contentShape(.rect)
                             }
-                            .contentShape(.rect)
+                            .buttonStyle(.plain)
+                            .moveDisabled(player.queueIndex == index)
+                            .deleteDisabled(player.queueIndex == index)
                         }
-                        .buttonStyle(.plain)
+                        .onDelete(perform: player.removeQueueItems)
+                        .onMove(perform: player.moveQueueItem)
                     }
                 }
             }
             .navigationTitle("播放队列")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("清空待播") {
+                        player.clearUpcomingQueue()
+                    }
+                    .disabled(!player.canClearUpcomingQueue)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    EditButton()
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("完成") { dismiss() }
                 }

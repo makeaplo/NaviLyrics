@@ -163,6 +163,7 @@ final class PlayerStore {
     // MARK: 控制
 
     func load(song: NowPlayingSong, autoplay: Bool = true) {
+        persistPlaybackState(force: true)
         isRestoringPlayback = false
         restoreTimeoutTask?.cancel()
         queue = [song]
@@ -176,6 +177,7 @@ final class PlayerStore {
         autoplay: Bool = true
     ) {
         guard queue.indices.contains(index) else { return }
+        persistPlaybackState(force: true)
         isRestoringPlayback = false
         restoreTimeoutTask?.cancel()
         self.queue = queue
@@ -185,6 +187,7 @@ final class PlayerStore {
 
     func playQueueItem(at index: Int) {
         guard queue.indices.contains(index) else { return }
+        persistPlaybackState(force: true)
         isRestoringPlayback = false
         restoreTimeoutTask?.cancel()
         queueIndex = index
@@ -205,6 +208,7 @@ final class PlayerStore {
         isPlaying = false
         isBuffering = false
         playbackErrorMessage = nil
+        qualifiedPlayEvent = nil
         accumulatedPlaybackTime = 0
         lastObservedProgress = nil
         hasQualifiedCurrentPlay = false
@@ -331,6 +335,11 @@ final class PlayerStore {
         return queue.indices.contains(queueIndex + 1)
     }
 
+    var canClearUpcomingQueue: Bool {
+        guard let queueIndex else { return false }
+        return queue.indices.contains(queueIndex + 1)
+    }
+
     func playPrevious() {
         guard currentSong != nil else { return }
         if progress > 3 {
@@ -343,6 +352,7 @@ final class PlayerStore {
             seek(to: 0)
             return
         }
+        persistPlaybackState(force: true)
         let previousIndex = queueIndex - 1
         self.queueIndex = previousIndex
         loadCurrentSong(queue[previousIndex], autoplay: true)
@@ -354,9 +364,67 @@ final class PlayerStore {
             pause()
             return
         }
+        persistPlaybackState(force: true)
         let nextIndex = queueIndex + 1
         self.queueIndex = nextIndex
         loadCurrentSong(queue[nextIndex], autoplay: true)
+    }
+
+    func removeQueueItems(at offsets: IndexSet) {
+        guard let currentIndex = queueIndex else { return }
+        let validOffsets = offsets.filter { queue.indices.contains($0) }
+        guard !validOffsets.isEmpty,
+              !validOffsets.contains(currentIndex) else {
+            return
+        }
+
+        for offset in validOffsets.sorted(by: >) {
+            queue.remove(at: offset)
+        }
+        let removedBeforeCurrent = validOffsets.filter {
+            $0 < currentIndex
+        }.count
+        queueIndex = currentIndex - removedBeforeCurrent
+        persistPlaybackState(force: true)
+        updateRemoteCommandAvailability()
+    }
+
+    func moveQueueItem(from offsets: IndexSet, to destination: Int) {
+        guard offsets.count == 1,
+              let source = offsets.first,
+              queue.indices.contains(source),
+              let currentIndex = queueIndex,
+              source != currentIndex else {
+            return
+        }
+
+        let item = queue.remove(at: source)
+        var insertionIndex = destination
+        if source < destination {
+            insertionIndex -= 1
+        }
+        insertionIndex = min(max(insertionIndex, 0), queue.count)
+        queue.insert(item, at: insertionIndex)
+
+        var adjustedCurrentIndex = currentIndex
+        if source < currentIndex {
+            adjustedCurrentIndex -= 1
+        }
+        if insertionIndex <= adjustedCurrentIndex {
+            adjustedCurrentIndex += 1
+        }
+        queueIndex = adjustedCurrentIndex
+        persistPlaybackState(force: true)
+    }
+
+    func clearUpcomingQueue() {
+        guard canClearUpcomingQueue,
+              let currentIndex = queueIndex else {
+            return
+        }
+        queue = Array(queue.prefix(currentIndex + 1))
+        persistPlaybackState(force: true)
+        updateRemoteCommandAvailability()
     }
 
     func play() {
@@ -365,7 +433,7 @@ final class PlayerStore {
             seek(to: 0)
         }
         lastObservedProgress = estimatedProgress()
-        activateAudioSession()
+        guard activateAudioSession() else { return }
         playbackErrorMessage = nil
         player.play()
         isPlaying = true
@@ -410,6 +478,7 @@ final class PlayerStore {
         isPlaying = false
         isBuffering = false
         playbackErrorMessage = nil
+        qualifiedPlayEvent = nil
         seekRevision &+= 1
         updateRemoteCommandAvailability()
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
@@ -752,14 +821,17 @@ final class PlayerStore {
         }
     }
 
-    private func activateAudioSession() {
+    @discardableResult
+    private func activateAudioSession() -> Bool {
         let session = AVAudioSession.sharedInstance()
         do {
             try session.setCategory(.playback, mode: .default)
             try session.setActive(true)
+            return true
         } catch {
             playbackErrorMessage =
                 "无法启用音频：\(error.localizedDescription)"
+            return false
         }
     }
 
