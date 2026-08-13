@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct PlayerView: View {
+    let namespace: Namespace.ID
     @Environment(AppSettings.self) private var settings
     @Environment(PlayerStore.self) private var player
     @Environment(NavidromeSession.self) private var session
@@ -11,6 +12,10 @@ struct PlayerView: View {
     @State private var scrubTime: TimeInterval = 0
     @State private var lyricsReloadRevision = 0
     @State private var showQueue = false
+
+    init(namespace: Namespace.ID) {
+        self.namespace = namespace
+    }
 
     var body: some View {
         GeometryReader { proxy in
@@ -66,6 +71,10 @@ struct PlayerView: View {
             LibraryArtwork(
                 url: player.currentSong?.artworkURL,
                 size: 54
+            )
+            .matchedGeometryEffect(
+                id: NowPlayingAnimation.artworkID,
+                in: namespace
             )
 
             VStack(alignment: .leading, spacing: 3) {

@@ -6,6 +6,18 @@ enum LibraryRoute: Hashable {
     case history(ListeningHistoryListKind)
 }
 
+enum NowPlayingAnimation {
+    static let artworkID = "now-playing-artwork"
+    static let open = Animation.spring(
+        response: 0.46,
+        dampingFraction: 0.88
+    )
+    static let dismiss = Animation.interactiveSpring(
+        response: 0.38,
+        dampingFraction: 0.86
+    )
+}
+
 struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(AppSettings.self) private var settings
@@ -15,6 +27,7 @@ struct RootView: View {
     @Environment(FavoritesStore.self) private var favorites
     @State private var isPlayerPresented = false
     @State private var navigationPath = NavigationPath()
+    @Namespace private var playerNamespace
 
     var body: some View {
         Group {
@@ -73,59 +86,102 @@ struct RootView: View {
     }
 
     private var authenticatedContent: some View {
-        NavigationStack(path: $navigationPath) {
-            ContentView()
-                .navigationDestination(for: SubsonicAlbum.self) { album in
-                    if let client = session.client {
-                        AlbumView(client: client, album: album)
-                    }
-                }
-                .navigationDestination(for: SubsonicArtist.self) { artist in
-                    if let client = session.client {
-                        ArtistView(client: client, artist: artist)
-                    }
-                }
-                .navigationDestination(for: SubsonicPlaylist.self) { playlist in
-                    if let client = session.client {
-                        PlaylistDetailView(
-                            playlist: playlist,
-                            client: client
-                        )
-                    }
-                }
-                .navigationDestination(for: LibraryRoute.self) { route in
-                    if let client = session.client {
-                        switch route {
-                        case .favorites:
-                            FavoritesView(client: client)
-                        case .playlists:
-                            PlaylistsView(client: client)
-                        case let .history(kind):
-                            SmartSongListView(kind: kind, client: client)
+        ZStack {
+            NavigationStack(path: $navigationPath) {
+                ContentView()
+                    .navigationDestination(for: SubsonicAlbum.self) { album in
+                        if let client = session.client {
+                            AlbumView(client: client, album: album)
                         }
                     }
-                }
+                    .navigationDestination(for: SubsonicArtist.self) { artist in
+                        if let client = session.client {
+                            ArtistView(client: client, artist: artist)
+                        }
+                    }
+                    .navigationDestination(for: SubsonicPlaylist.self) { playlist in
+                        if let client = session.client {
+                            PlaylistDetailView(
+                                playlist: playlist,
+                                client: client
+                            )
+                        }
+                    }
+                    .navigationDestination(for: LibraryRoute.self) { route in
+                        if let client = session.client {
+                            switch route {
+                            case .favorites:
+                                FavoritesView(client: client)
+                            case .playlists:
+                                PlaylistsView(client: client)
+                            case let .history(kind):
+                                SmartSongListView(kind: kind, client: client)
+                            }
+                        }
+                    }
+            }
+            .scaleEffect(isPlayerPresented ? 0.965 : 1)
+            .blur(radius: isPlayerPresented ? 2 : 0)
+            .clipShape(
+                RoundedRectangle(
+                    cornerRadius: isPlayerPresented ? 18 : 0,
+                    style: .continuous
+                )
+            )
+
+            Color.black
+                .opacity(isPlayerPresented ? 0.18 : 0)
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+
+            if isPlayerPresented {
+                PlayerOverlay(
+                    isPresented: $isPlayerPresented,
+                    namespace: playerNamespace
+                )
+                .zIndex(1)
+                .transition(
+                    .asymmetric(
+                        insertion: .move(edge: .bottom)
+                            .combined(with: .opacity),
+                        removal: .move(edge: .bottom)
+                            .combined(with: .opacity)
+                    )
+                )
+            }
         }
-        .environment(\.playerPresentation, $isPlayerPresented)
+        .background(Color.black.ignoresSafeArea())
+        .environment(
+            \.playerPresentation,
+            Binding(
+                get: { isPlayerPresented },
+                set: { presented in
+                    withAnimation(
+                        presented
+                            ? NowPlayingAnimation.open
+                            : NowPlayingAnimation.dismiss
+                    ) {
+                        isPlayerPresented = presented
+                    }
+                }
+            )
+        )
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if !isPlayerPresented,
                player.currentSong != nil {
-                MiniPlayerBar {
-                    isPlayerPresented = true
+                MiniPlayerBar(namespace: playerNamespace) {
+                    withAnimation(NowPlayingAnimation.open) {
+                        isPlayerPresented = true
+                    }
                 }
             }
-        }
-        .sheet(isPresented: $isPlayerPresented) {
-            PlayerView()
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
-                .presentationBackground(.black)
         }
     }
 }
 
 private struct MiniPlayerBar: View {
     @Environment(PlayerStore.self) private var player
+    let namespace: Namespace.ID
     let onOpenPlayer: () -> Void
 
     var body: some View {
@@ -143,6 +199,10 @@ private struct MiniPlayerBar: View {
                         LibraryArtwork(
                             url: player.currentSong?.artworkURL,
                             size: 42
+                        )
+                        .matchedGeometryEffect(
+                            id: NowPlayingAnimation.artworkID,
+                            in: namespace
                         )
 
                         VStack(alignment: .leading, spacing: 2) {
@@ -198,6 +258,81 @@ private struct MiniPlayerBar: View {
         }
         .background(.ultraThinMaterial)
         .overlay(alignment: .top) { Divider() }
+    }
+}
+
+private struct PlayerOverlay: View {
+    @Binding var isPresented: Bool
+    let namespace: Namespace.ID
+    @State private var dragOffset: CGFloat = 0
+
+    var body: some View {
+        GeometryReader { proxy in
+            PlayerView(namespace: namespace)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .offset(y: dragOffset)
+                .scaleEffect(scale(for: proxy.size.height), anchor: .center)
+                .clipShape(
+                    RoundedRectangle(
+                        cornerRadius: cornerRadius,
+                        style: .continuous
+                    )
+                )
+                .overlay(alignment: .top) {
+                    Color.clear
+                        .frame(width: 112, height: 52)
+                        .contentShape(Rectangle())
+                        .gesture(dismissGesture(height: proxy.size.height))
+                        .overlay(alignment: .top) {
+                            Capsule()
+                                .fill(.white.opacity(0.72))
+                                .frame(width: 36, height: 5)
+                                .padding(.top, 8)
+                        }
+                        .accessibilityLabel("下拉关闭播放器")
+                }
+                .onAppear { dragOffset = 0 }
+        }
+    }
+
+    private var cornerRadius: CGFloat {
+        min(max(dragOffset / 5, 0), 22)
+    }
+
+    private func scale(for height: CGFloat) -> CGFloat {
+        let progress = min(max(dragOffset / max(height * 0.78, 1), 0), 1)
+        return 1 - progress * 0.04
+    }
+
+    private func dismissGesture(height: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 8)
+            .onChanged { value in
+                guard value.translation.height > 0,
+                      value.translation.height
+                        > abs(value.translation.width) else {
+                    return
+                }
+                dragOffset = value.translation.height
+            }
+            .onEnded { value in
+                let translation = max(value.translation.height, 0)
+                let predictedTranslation = max(
+                    value.predictedEndTranslation.height,
+                    0
+                )
+                let shouldDismiss = translation > max(120, height * 0.16)
+                    || predictedTranslation > height * 0.28
+
+                if shouldDismiss {
+                    withAnimation(NowPlayingAnimation.dismiss) {
+                        isPresented = false
+                    }
+                } else {
+                    withAnimation(NowPlayingAnimation.dismiss) {
+                        dragOffset = 0
+                    }
+                }
+            }
     }
 }
 
