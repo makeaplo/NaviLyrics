@@ -113,14 +113,23 @@ struct PlayerView: View {
         ZStack {
             Color.black
             if let artworkURL = player.currentSong?.artworkURL {
-                AsyncImage(url: artworkURL) { phase in
-                    if case let .success(image) = phase {
-                        image
-                            .resizable()
-                            .scaledToFill()
-                            .blur(radius: 72)
-                            .scaleEffect(1.25)
-                            .opacity(0.42)
+                if artworkURL.scheme == "navi-demo" {
+                    DemoArtworkView(
+                        identifier: artworkURL.lastPathComponent
+                    )
+                    .blur(radius: 72)
+                    .scaleEffect(1.25)
+                    .opacity(0.42)
+                } else {
+                    AsyncImage(url: artworkURL) { phase in
+                        if case let .success(image) = phase {
+                            image
+                                .resizable()
+                                .scaledToFill()
+                                .blur(radius: 72)
+                                .scaleEffect(1.25)
+                                .opacity(0.42)
+                        }
                     }
                 }
             }

@@ -7,6 +7,10 @@ struct LoginView: View {
     @State private var serverURL = ""
     @State private var username = ""
     @State private var password = ""
+#if DEBUG
+    @State private var demoTapCount = 0
+    @State private var showDemoEntry = false
+#endif
     @FocusState private var focusedField: Field?
 
     var body: some View {
@@ -35,6 +39,17 @@ struct LoginView: View {
             password = settings.password
             focusedField = serverURL.isEmpty ? .server : nil
         }
+#if DEBUG
+        .alert("开发演示模式", isPresented: $showDemoEntry) {
+            Button("进入演示") {
+                focusedField = nil
+                session.enterDemoMode()
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("使用本地虚拟音乐库，不连接 NAS、不播放真实音频，仅用于外网开发和交互验证。")
+        }
+#endif
     }
 
     private var header: some View {
@@ -49,6 +64,16 @@ struct LoginView: View {
 
             Text("NaviLyrics")
                 .font(.largeTitle.bold())
+#if DEBUG
+                .onTapGesture {
+                    demoTapCount += 1
+                    if demoTapCount >= 7 {
+                        demoTapCount = 0
+                        showDemoEntry = true
+                    }
+                }
+                .accessibilityHint("连续轻点标题七次打开开发演示入口")
+#endif
             Text("验证 Navidrome 服务器后才能进入音乐库")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)

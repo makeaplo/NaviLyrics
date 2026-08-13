@@ -1,6 +1,7 @@
 import XCTest
 @testable import NaviLyrics
 
+@MainActor
 final class NaviLyricsCoreTests: XCTestCase {
     @MainActor
     func testDuplicateTimestampAndTextReceiveUniqueIdentities() {
@@ -71,6 +72,38 @@ final class NaviLyricsCoreTests: XCTestCase {
 
         XCTAssertEqual(first, second)
         XCTAssertFalse(first?.absoluteString.contains("secret") ?? true)
+    }
+
+    @MainActor
+    func testDemoClientProvidesLocalLibraryAndLyrics() async throws {
+        let client = SubsonicClient.demo()
+
+        XCTAssertTrue(client.isDemoMode)
+        let albums = try await client.albumList()
+        XCTAssertEqual(albums.count, 2)
+
+        let songs = try await client.songs(inAlbum: albums[0].id)
+        XCTAssertFalse(songs.isEmpty)
+        XCTAssertEqual(
+            client.streamURL(songID: songs[0].id).scheme,
+            "navi-demo"
+        )
+        XCTAssertEqual(
+            client.coverURL(coverArt: songs[0].coverArt)?.scheme,
+            "navi-demo"
+        )
+
+        let result = try await client.lyrics(
+            songID: songs[0].id,
+            artist: songs[0].artist,
+            title: songs[0].title
+        )
+        guard case let .structured(tracks) = result else {
+            XCTFail("演示歌曲应提供结构化歌词")
+            return
+        }
+        XCTAssertGreaterThanOrEqual(tracks.count, 2)
+        XCTAssertFalse(tracks[0].line?.isEmpty ?? true)
     }
 
     @MainActor
@@ -155,6 +188,7 @@ final class NaviLyricsCoreTests: XCTestCase {
         XCTAssertTrue(secondStore.items.isEmpty)
     }
 
+    @MainActor
     private func makeHistorySong(id: String) throws -> NowPlayingSong {
         let streamURL = try XCTUnwrap(
             URL(string: "https://music.example.com/stream/\(id)")

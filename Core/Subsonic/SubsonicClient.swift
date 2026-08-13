@@ -60,9 +60,192 @@ enum SubsonicLyricsResult {
     case text(String)
 }
 
+// MARK: - 本地演示数据
+
+/// A small in-process library used by the hidden development entry point.
+/// It never touches the real Navidrome account or network.
+@MainActor
+private final class DemoClientState {
+    let albums: [SubsonicAlbum]
+    let artists: [SubsonicArtist]
+    var songsByAlbum: [String: [SubsonicSong]]
+    var playlists: [SubsonicPlaylist]
+    var playlistSongs: [String: [SubsonicSong]]
+    var favorites: [SubsonicSong]
+
+    init() {
+        let firstAlbum = SubsonicAlbum(
+            id: "demo-album-midnight",
+            title: "Midnight Signals",
+            artist: "NaviLyrics Studio",
+            coverArt: "demo-cover-midnight",
+            year: 2024
+        )
+        let secondAlbum = SubsonicAlbum(
+            id: "demo-album-afterglow",
+            title: "Afterglow Letters",
+            artist: "NaviLyrics Studio",
+            coverArt: "demo-cover-afterglow",
+            year: 2023
+        )
+
+        let midnightSongs = [
+            SubsonicSong(
+                id: "demo-song-first-light",
+                title: "First Light",
+                artist: firstAlbum.artist,
+                album: firstAlbum.title,
+                duration: 214,
+                suffix: "aac",
+                bitRate: 256,
+                coverArt: firstAlbum.coverArt,
+                isStarred: true
+            ),
+            SubsonicSong(
+                id: "demo-song-city-rain",
+                title: "City Rain",
+                artist: firstAlbum.artist,
+                album: firstAlbum.title,
+                duration: 187,
+                suffix: "flac",
+                bitRate: 960,
+                coverArt: firstAlbum.coverArt,
+                isStarred: false
+            ),
+            SubsonicSong(
+                id: "demo-song-slow-orbit",
+                title: "Slow Orbit",
+                artist: firstAlbum.artist,
+                album: firstAlbum.title,
+                duration: 246,
+                suffix: "mp3",
+                bitRate: 320,
+                coverArt: firstAlbum.coverArt,
+                isStarred: true
+            ),
+        ]
+        let afterglowSongs = [
+            SubsonicSong(
+                id: "demo-song-paper-moon",
+                title: "Paper Moon",
+                artist: secondAlbum.artist,
+                album: secondAlbum.title,
+                duration: 201,
+                suffix: "flac",
+                bitRate: 960,
+                coverArt: secondAlbum.coverArt,
+                isStarred: false
+            ),
+            SubsonicSong(
+                id: "demo-song-soft-static",
+                title: "Soft Static",
+                artist: secondAlbum.artist,
+                album: secondAlbum.title,
+                duration: 173,
+                suffix: "aac",
+                bitRate: 256,
+                coverArt: secondAlbum.coverArt,
+                isStarred: false
+            ),
+            SubsonicSong(
+                id: "demo-song-homeward",
+                title: "Homeward",
+                artist: secondAlbum.artist,
+                album: secondAlbum.title,
+                duration: 229,
+                suffix: "mp3",
+                bitRate: 320,
+                coverArt: secondAlbum.coverArt,
+                isStarred: true
+            ),
+        ]
+
+        albums = [firstAlbum, secondAlbum]
+        artists = [
+            SubsonicArtist(
+                id: "demo-artist-studio",
+                name: "NaviLyrics Studio",
+                albumCount: albums.count
+            )
+        ]
+        songsByAlbum = [
+            firstAlbum.id: midnightSongs,
+            secondAlbum.id: afterglowSongs,
+        ]
+
+        let playlistID = "demo-playlist-late-night"
+        playlists = [
+            SubsonicPlaylist(
+                id: playlistID,
+                name: "深夜漫游",
+                songCount: 3,
+                coverArt: firstAlbum.coverArt
+            )
+        ]
+        playlistSongs = [
+            playlistID: [
+                midnightSongs[0],
+                afterglowSongs[0],
+                afterglowSongs[2],
+            ]
+        ]
+        favorites = [midnightSongs[0], midnightSongs[2], afterglowSongs[2]]
+    }
+
+    var allSongs: [SubsonicSong] {
+        albums.flatMap { songsByAlbum[$0.id] ?? [] }
+    }
+
+    func song(withID id: String) -> SubsonicSong? {
+        allSongs.first { $0.id == id }
+    }
+
+    func updateFavorite(songID: String, isFavorite: Bool) {
+        guard let original = song(withID: songID) else { return }
+        var updated = original
+        updated.isStarred = isFavorite
+        favorites.removeAll { $0.id == songID }
+        if isFavorite {
+            favorites.insert(updated, at: 0)
+        }
+
+        for albumID in Array(songsByAlbum.keys) {
+            songsByAlbum[albumID] = songsByAlbum[albumID]?.map { song in
+                guard song.id == songID else { return song }
+                var song = song
+                song.isStarred = isFavorite
+                return song
+            }
+        }
+        for playlistID in Array(playlistSongs.keys) {
+            playlistSongs[playlistID] = playlistSongs[playlistID]?.map {
+                song in
+                guard song.id == songID else { return song }
+                var song = song
+                song.isStarred = isFavorite
+                return song
+            }
+        }
+    }
+
+    func refreshPlaylist(_ playlistID: String) {
+        guard let index = playlists.firstIndex(where: { $0.id == playlistID }) else {
+            return
+        }
+        let playlist = playlists[index]
+        playlists[index] = SubsonicPlaylist(
+            id: playlist.id,
+            name: playlist.name,
+            songCount: playlistSongs[playlistID]?.count ?? 0,
+            coverArt: playlist.coverArt
+        )
+    }
+}
+
 // MARK: - 客户端
 
 /// Navidrome 实现了标准 Subsonic API（v1.16+），使用 REST + 密码盐加密认证。
+@MainActor
 struct SubsonicClient {
     private static let maximumResponseSize = 20 * 1_024 * 1_024
     let baseURL: URL
@@ -73,6 +256,7 @@ struct SubsonicClient {
     private let authenticationToken: String
     private let clientName = "navilyrics"
     private let apiVersion = "1.16.1"
+    private let demoState: DemoClientState?
 
     init(baseURL: URL, username: String, password: String) {
         let salt = String(
@@ -85,11 +269,55 @@ struct SubsonicClient {
         self.password = password
         authenticationSalt = salt
         authenticationToken = (password + salt).md5
+        demoState = nil
+    }
+
+    @MainActor
+    private init(demoState: DemoClientState) {
+        baseURL = URL(string: "navi-demo://local-library")!
+        username = "演示用户"
+        password = ""
+        authenticationSalt = ""
+        authenticationToken = ""
+        self.demoState = demoState
+    }
+
+    @MainActor
+    static func demo() -> SubsonicClient {
+        SubsonicClient(demoState: DemoClientState())
+    }
+
+    @MainActor
+    var isDemoMode: Bool {
+        demoState != nil
+    }
+
+    @MainActor
+    func demoPreviewSongs() -> [SubsonicSong] {
+        demoState?.allSongs ?? []
+    }
+
+    func demoAlbums() -> [SubsonicAlbum] {
+        demoState?.albums ?? []
+    }
+
+    func makeNowPlayingSong(from song: SubsonicSong) -> NowPlayingSong {
+        NowPlayingSong(
+            id: song.id,
+            title: song.title,
+            artist: song.artist,
+            album: song.album,
+            duration: song.duration,
+            streamURL: streamURL(songID: song.id),
+            artworkURL: coverURL(coverArt: song.coverArt, size: 900),
+            artworkIdentifier: song.coverArt
+        )
     }
 
     // MARK: 认证
 
     func ping() async throws -> Bool {
+        if demoState != nil { return true }
         let resp: SubsonicResponse = try await request("ping", params: [:])
         return resp.status == "ok"
     }
@@ -98,6 +326,7 @@ struct SubsonicClient {
 
     /// 专辑列表（newest / random / alphabetical / recent / frequent / highest）
     func albumList(type: String = "newest", size: Int = 200) async throws -> [SubsonicAlbum] {
+        if let demoState { return demoState.albums }
         let resp: SubsonicResponse = try await request(
             "getAlbumList2",
             params: ["type": type, "size": "\(size)"]
@@ -115,6 +344,7 @@ struct SubsonicClient {
 
     /// 播放列表目录。
     func playlists() async throws -> [SubsonicPlaylist] {
+        if let demoState { return demoState.playlists }
         let resp: SubsonicResponse = try await request(
             "getPlaylists",
             params: [:]
@@ -131,6 +361,7 @@ struct SubsonicClient {
 
     /// 播放列表内歌曲。
     func songs(inPlaylist playlistID: String) async throws -> [SubsonicSong] {
+        if let demoState { return demoState.playlistSongs[playlistID] ?? [] }
         let resp: SubsonicResponse = try await request(
             "getPlaylist",
             params: ["id": playlistID]
@@ -143,6 +374,21 @@ struct SubsonicClient {
         name: String,
         songIDs: [String] = []
     ) async throws {
+        if let demoState {
+            let id = "demo-playlist-\(UUID().uuidString)"
+            let songs = songIDs.compactMap { demoState.song(withID: $0) }
+            demoState.playlists.insert(
+                SubsonicPlaylist(
+                    id: id,
+                    name: name,
+                    songCount: songs.count,
+                    coverArt: songs.first?.coverArt
+                ),
+                at: 0
+            )
+            demoState.playlistSongs[id] = songs
+            return
+        }
         let songItems = songIDs.map {
             URLQueryItem(name: "songId", value: $0)
         }
@@ -160,6 +406,34 @@ struct SubsonicClient {
         songIDsToAdd: [String] = [],
         songIndicesToRemove: [Int] = []
     ) async throws {
+        if let demoState {
+            guard let index = demoState.playlists.firstIndex(
+                where: { $0.id == id }
+            ) else { return }
+            if let name {
+                let playlist = demoState.playlists[index]
+                demoState.playlists[index] = SubsonicPlaylist(
+                    id: playlist.id,
+                    name: name,
+                    songCount: playlist.songCount,
+                    coverArt: playlist.coverArt
+                )
+            }
+            var songs = demoState.playlistSongs[id] ?? []
+            for songIndex in songIndicesToRemove.sorted(by: >)
+                where songs.indices.contains(songIndex) {
+                songs.remove(at: songIndex)
+            }
+            for songID in songIDsToAdd {
+                if let song = demoState.song(withID: songID),
+                   !songs.contains(where: { $0.id == songID }) {
+                    songs.append(song)
+                }
+            }
+            demoState.playlistSongs[id] = songs
+            demoState.refreshPlaylist(id)
+            return
+        }
         var params = ["playlistId": id]
         if let name {
             params["name"] = name
@@ -179,11 +453,17 @@ struct SubsonicClient {
 
     /// 删除播放列表。
     func deletePlaylist(id: String) async throws {
+        if let demoState {
+            demoState.playlists.removeAll { $0.id == id }
+            demoState.playlistSongs.removeValue(forKey: id)
+            return
+        }
         _ = try await request("deletePlaylist", params: ["id": id])
     }
 
     /// 专辑内歌曲
     func songs(inAlbum albumID: String) async throws -> [SubsonicSong] {
+        if let demoState { return demoState.songsByAlbum[albumID] ?? [] }
         let resp: SubsonicResponse = try await request(
             "getAlbum",
             params: ["id": albumID]
@@ -194,6 +474,12 @@ struct SubsonicClient {
 
     /// 歌手详情及其专辑。
     func albums(byArtist artistID: String) async throws -> [SubsonicAlbum] {
+        if let demoState {
+            let artistName = demoState.artists.first {
+                $0.id == artistID
+            }?.name
+            return demoState.albums.filter { $0.artist == artistName }
+        }
         let resp: SubsonicResponse = try await request(
             "getArtist",
             params: ["id": artistID]
@@ -203,6 +489,26 @@ struct SubsonicClient {
 
     /// 搜索
     func search(query: String) async throws -> SubsonicSearchResults {
+        if let demoState {
+            let normalizedQuery = query.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            ).lowercased()
+            return SubsonicSearchResults(
+                songs: demoState.allSongs.filter {
+                    [$0.title, $0.artist, $0.album].contains {
+                        $0.lowercased().contains(normalizedQuery)
+                    }
+                },
+                albums: demoState.albums.filter {
+                    [$0.title, $0.artist].contains {
+                        $0.lowercased().contains(normalizedQuery)
+                    }
+                },
+                artists: demoState.artists.filter {
+                    $0.name.lowercased().contains(normalizedQuery)
+                }
+            )
+        }
         let resp: SubsonicResponse = try await request(
             "search3",
             params: [
@@ -228,6 +534,7 @@ struct SubsonicClient {
 
     /// 返回当前账号标记为喜欢的歌曲。
     func starredSongs() async throws -> [SubsonicSong] {
+        if let demoState { return demoState.favorites }
         let resp: SubsonicResponse = try await request(
             "getStarred2",
             params: [:]
@@ -237,6 +544,10 @@ struct SubsonicClient {
 
     /// 在 Navidrome 中添加或取消歌曲收藏。
     func setFavorite(songID: String, isFavorite: Bool) async throws {
+        if let demoState {
+            demoState.updateFavorite(songID: songID, isFavorite: isFavorite)
+            return
+        }
         _ = try await request(
             isFavorite ? "star" : "unstar",
             params: ["id": songID]
@@ -249,6 +560,38 @@ struct SubsonicClient {
         artist: String,
         title: String
     ) async throws -> SubsonicLyricsResult? {
+        if demoState != nil {
+            return .structured([
+                SubsonicStructuredLyrics(
+                    displayArtist: artist,
+                    displayTitle: title,
+                    lang: "en",
+                    kind: "main",
+                    synced: true,
+                    line: [
+                        SubsonicStructuredLyricLine(start: 0, value: "City lights are waking slowly"),
+                        SubsonicStructuredLyricLine(start: 7_000, value: "Footsteps echo through the blue"),
+                        SubsonicStructuredLyricLine(start: 14_000, value: "Every quiet road is glowing"),
+                        SubsonicStructuredLyricLine(start: 21_000, value: "I keep finding my way to you"),
+                    ],
+                    cueLine: nil
+                ),
+                SubsonicStructuredLyrics(
+                    displayArtist: artist,
+                    displayTitle: title,
+                    lang: "zh",
+                    kind: "translation",
+                    synced: true,
+                    line: [
+                        SubsonicStructuredLyricLine(start: 0, value: "城市灯火慢慢醒来"),
+                        SubsonicStructuredLyricLine(start: 7_000, value: "脚步声穿过蓝色夜幕"),
+                        SubsonicStructuredLyricLine(start: 14_000, value: "每条安静的路都在发光"),
+                        SubsonicStructuredLyricLine(start: 21_000, value: "我总能找到通往你的方向"),
+                    ],
+                    cueLine: nil
+                ),
+            ])
+        }
         do {
             let resp = try await request(
                 "getLyricsBySongId",
@@ -279,6 +622,9 @@ struct SubsonicClient {
 
     /// 歌曲流 URL（播放用）
     func streamURL(songID: String) -> URL {
+        if demoState != nil {
+            return URL(string: "navi-demo://stream/\(songID)")!
+        }
         guard var comps = URLComponents(
             url: baseURL.appendingPathComponent("rest/stream.view"),
             resolvingAgainstBaseURL: false
@@ -295,6 +641,9 @@ struct SubsonicClient {
     /// 封面 URL
     func coverURL(coverArt: String?, size: Int = 600) -> URL? {
         guard let coverArt, !coverArt.isEmpty else { return nil }
+        if demoState != nil {
+            return URL(string: "navi-demo://cover/\(coverArt)")
+        }
         guard var comps = URLComponents(
             url: baseURL.appendingPathComponent("rest/getCoverArt.view"),
             resolvingAgainstBaseURL: false

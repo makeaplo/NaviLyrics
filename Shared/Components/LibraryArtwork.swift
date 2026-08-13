@@ -12,7 +12,9 @@ struct LibraryArtwork: View {
 
     var body: some View {
         Group {
-            if let image {
+            if url?.scheme == "navi-demo" {
+                DemoArtworkView(identifier: url?.lastPathComponent ?? "")
+            } else if let image {
                 image
                     .resizable()
                     .scaledToFill()
@@ -46,6 +48,10 @@ struct LibraryArtwork: View {
             isLoading = false
             return
         }
+        guard url.scheme != "navi-demo" else {
+            isLoading = false
+            return
+        }
         if let cachedImage = Self.imageCache.object(forKey: url as NSURL) {
             image = Image(uiImage: cachedImage)
             isLoading = false
@@ -71,5 +77,47 @@ struct LibraryArtwork: View {
         } catch {
             return
         }
+    }
+}
+
+struct DemoArtworkView: View {
+    let identifier: String
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: palette,
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            Circle()
+                .fill(.white.opacity(0.2))
+                .frame(width: 180, height: 180)
+                .blur(radius: 8)
+                .offset(x: 52, y: -58)
+
+            Circle()
+                .stroke(.white.opacity(0.46), lineWidth: 2)
+                .frame(width: 92, height: 92)
+                .scaleEffect(1.6)
+                .opacity(0.7)
+
+            Image(systemName: symbolName)
+                .font(.system(size: 34, weight: .medium))
+                .foregroundStyle(.white.opacity(0.92))
+        }
+        .compositingGroup()
+    }
+
+    private var palette: [Color] {
+        if identifier.contains("afterglow") {
+            return [.indigo, .purple, .pink.opacity(0.8)]
+        }
+        return [.teal, .blue, .black.opacity(0.86)]
+    }
+
+    private var symbolName: String {
+        identifier.contains("afterglow") ? "moon.stars.fill" : "waveform"
     }
 }

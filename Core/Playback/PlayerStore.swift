@@ -129,7 +129,7 @@ final class PlayerStore {
     private(set) var progress: TimeInterval = 0
 
     var canTogglePlayback: Bool {
-        player != nil && currentSong != nil
+        currentSong != nil && (player != nil || isDemoPlayback)
     }
 
     // MARK: 播放器
@@ -143,6 +143,7 @@ final class PlayerStore {
     private var timeControlStatusObservation: NSKeyValueObservation?
     private var restoreTimeoutTask: Task<Void, Never>?
     private var artworkTask: Task<Void, Never>?
+    private var demoProgressTask: Task<Void, Never>?
     private var remoteCommandHandlers: [
         (command: MPRemoteCommand, token: Any)
     ] = []
@@ -156,6 +157,7 @@ final class PlayerStore {
     private var accumulatedPlaybackTime: TimeInterval = 0
     private var lastObservedProgress: TimeInterval?
     private var hasQualifiedCurrentPlay = false
+    private var isDemoPlayback = false
 
     init() {
         prepareAudioSession()
@@ -217,6 +219,18 @@ final class PlayerStore {
         accumulatedPlaybackTime = 0
         lastObservedProgress = nil
         hasQualifiedCurrentPlay = false
+
+        if song.streamURL.scheme == "navi-demo" {
+            isDemoPlayback = true
+            updateRemoteCommandAvailability()
+            updateNowPlayingInfo(force: true)
+            if autoplay {
+                play()
+            } else {
+                persistPlaybackState(force: true)
+            }
+            return
+        }
 
         let item = AVPlayerItem(url: song.streamURL)
         let newPlayer = AVPlayer(playerItem: item)
@@ -299,7 +313,8 @@ final class PlayerStore {
     }
 
     func persistPlaybackState(force: Bool = false) {
-        guard !isRestoringPlayback,
+        guard !isDemoPlayback,
+              !isRestoringPlayback,
               let serverURL = persistenceServerURL,
               let queueIndex,
               queue.indices.contains(queueIndex) else {
@@ -434,13 +449,24 @@ final class PlayerStore {
     }
 
     func play() {
-        guard let player, currentSong != nil else { return }
+        guard currentSong != nil else { return }
         if duration > 0, progress >= duration - 0.25 {
             seek(to: 0)
         }
         lastObservedProgress = estimatedProgress()
-        guard activateAudioSession() else { return }
+        if !isDemoPlayback {
+            guard activateAudioSession() else { return }
+        }
         playbackErrorMessage = nil
+        if isDemoPlayback {
+            isPlaying = true
+            isBuffering = false
+            startDemoProgressTask()
+            updateNowPlayingInfo(force: true)
+            persistPlaybackState(force: true)
+            return
+        }
+        guard let player else { return }
         player.play()
         isPlaying = true
         isBuffering = player.timeControlStatus == .waitingToPlayAtSpecifiedRate
@@ -451,6 +477,8 @@ final class PlayerStore {
     func pause() {
         guard currentSong != nil else { return }
         lastObservedProgress = estimatedProgress()
+        demoProgressTask?.cancel()
+        demoProgressTask = nil
         player?.pause()
         isPlaying = false
         isBuffering = false
@@ -500,8 +528,7 @@ final class PlayerStore {
     }
 
     func seek(to time: TimeInterval) {
-        guard let player,
-              currentSong != nil,
+        guard currentSong != nil,
               time.isFinite else {
             return
         }
@@ -509,8 +536,10 @@ final class PlayerStore {
         let target = min(max(time, 0), upperBound)
         progress = target
         lastObservedProgress = target
-        let cmTime = CMTime(seconds: target, preferredTimescale: 600)
-        player.seek(to: cmTime)
+        if let player {
+            let cmTime = CMTime(seconds: target, preferredTimescale: 600)
+            player.seek(to: cmTime)
+        }
         seekRevision &+= 1
         updateNowPlayingInfo(force: true)
         persistPlaybackState(force: true)
@@ -526,6 +555,38 @@ final class PlayerStore {
     /// 指定时刻的播放进度（TimelineView 驱动用）
     func estimatedProgress(at date: Date) -> TimeInterval {
         estimatedProgress()
+    }
+
+    private func startDemoProgressTask() {
+        demoProgressTask?.cancel()
+        let generation = playbackGeneration
+        demoProgressTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(for: .milliseconds(200))
+                } catch {
+                    return
+                }
+                guard let self,
+                      self.playbackGeneration == generation,
+                      self.isDemoPlayback,
+                      self.isPlaying else {
+                    return
+                }
+                self.progress = min(
+                    self.progress + 0.2,
+                    max(self.duration, 0)
+                )
+                self.recordQualifiedPlayIfNeeded()
+                self.persistPlaybackState()
+                self.updateNowPlayingInfo()
+                if self.duration > 0,
+                   self.progress >= self.duration {
+                    self.playNext()
+                    return
+                }
+            }
+        }
     }
 
     // MARK: 时间与播放器观察
@@ -696,6 +757,9 @@ final class PlayerStore {
     }
 
     private func tearDownPlayer() {
+        demoProgressTask?.cancel()
+        demoProgressTask = nil
+        isDemoPlayback = false
         player?.pause()
         if let timeObserver, let player {
             player.removeTimeObserver(timeObserver)
@@ -1078,7 +1142,7 @@ final class PlayerStore {
         updateRemoteCommandAvailability()
     }
 
-    private nonisolated(unsafe) static func makeMediaArtwork(
+    private nonisolated static func makeMediaArtwork(
         from image: UIImage
     ) -> MPMediaItemArtwork {
         MPMediaItemArtwork(boundsSize: image.size) { _ in image }
@@ -1119,6 +1183,7 @@ final class PlayerStore {
     isolated deinit {
         restoreTimeoutTask?.cancel()
         artworkTask?.cancel()
+        demoProgressTask?.cancel()
         tearDownPlayer()
         for observer in audioSessionObservers {
             NotificationCenter.default.removeObserver(observer)

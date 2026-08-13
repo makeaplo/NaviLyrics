@@ -180,19 +180,31 @@ struct SettingsView: View {
                 Button("取消", role: .cancel) {}
             }
             .confirmationDialog(
-                "退出当前音乐库？",
+                session.isDemoMode ? "退出开发演示？" : "退出当前音乐库？",
                 isPresented: $showSignOutConfirmation,
                 titleVisibility: .visible
             ) {
-                Button("退出并清除账号", role: .destructive) {
+                Button(
+                    session.isDemoMode ? "退出演示" : "退出并清除账号",
+                    role: .destructive
+                ) {
                     history.clearCurrentServerHistory()
-                    player.reset(clearsPersistedState: true)
-                    session.signOut(settings: settings)
+                    if session.isDemoMode {
+                        player.reset()
+                        session.requireSignIn()
+                    } else {
+                        player.reset(clearsPersistedState: true)
+                        session.signOut(settings: settings)
+                    }
                     dismiss()
                 }
                 Button("取消", role: .cancel) {}
             } message: {
-                Text("之后必须重新验证服务器才能使用 NaviLyrics。")
+                Text(
+                    session.isDemoMode
+                        ? "将返回连接页，已保存的真实服务器账号不会被清除。"
+                        : "之后必须重新验证服务器才能使用 NaviLyrics。"
+                )
             }
             .confirmationDialog(
                 "清除本机播放记录？",
@@ -211,16 +223,30 @@ struct SettingsView: View {
 
     private var connectionSection: some View {
         Section("当前音乐库") {
+            if session.isDemoMode {
+                Label("开发演示模式", systemImage: "hammer.fill")
+                    .foregroundStyle(.orange)
+                Text("当前使用本地虚拟音乐库，不连接 NAS，不会修改真实服务器数据。")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
             LabeledContent("服务器") {
-                Text(settings.serverURL)
+                Text(
+                    session.isDemoMode
+                        ? "本地演示数据"
+                        : settings.serverURL
+                )
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.trailing)
                     .lineLimit(2)
             }
-            LabeledContent("用户名", value: settings.username)
-            Label("连接正常", systemImage: "checkmark.circle.fill")
-                .foregroundStyle(.green)
-            if settings.usesInsecureCredentialFallback {
+            if !session.isDemoMode {
+                LabeledContent("用户名", value: settings.username)
+                Label("连接正常", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            }
+            if !session.isDemoMode,
+               settings.usesInsecureCredentialFallback {
                 Label(
                     "当前安装环境无法使用钥匙串，密码仅保存在本机偏好设置中",
                     systemImage: "exclamationmark.shield.fill"
@@ -279,7 +305,9 @@ struct SettingsView: View {
             }
         } footer: {
             Text(
-                "更换连接会返回登录页并保留当前内容供修改；退出登录会清除账号与播放记录。"
+                session.isDemoMode
+                    ? "演示数据只保存在本次运行中；退出演示不会清除已保存的真实连接。"
+                    : "更换连接会返回登录页并保留当前内容供修改；退出登录会清除账号与播放记录。"
             )
         }
     }

@@ -15,6 +15,7 @@ final class NavidromeSession {
     private(set) var status: Status = .checking
     private(set) var client: SubsonicClient?
     private(set) var albums: [SubsonicAlbum] = []
+    private(set) var isDemoMode = false
     private(set) var isRefreshing = false
     private(set) var libraryErrorMessage: String?
 
@@ -25,6 +26,19 @@ final class NavidromeSession {
 
     var isConnecting: Bool {
         status == .connecting
+    }
+
+    var activeLibraryIdentifier: String {
+        client?.baseURL.absoluteString ?? ""
+    }
+
+    func enterDemoMode() {
+        let demoClient = SubsonicClient.demo()
+        client = demoClient
+        albums = demoClient.demoAlbums()
+        isDemoMode = true
+        libraryErrorMessage = nil
+        status = .connected
     }
 
     func restore(using settings: AppSettings) async {
@@ -71,6 +85,7 @@ final class NavidromeSession {
         libraryErrorMessage = nil
         client = nil
         albums = []
+        isDemoMode = false
 
         let candidate = SubsonicClient(
             baseURL: url,
@@ -143,6 +158,7 @@ final class NavidromeSession {
     func requireSignIn() {
         client = nil
         albums = []
+        isDemoMode = false
         libraryErrorMessage = nil
         status = .signedOut
     }
@@ -155,6 +171,7 @@ final class NavidromeSession {
     private func fail(_ message: String) {
         client = nil
         albums = []
+        isDemoMode = false
         libraryErrorMessage = nil
         status = .failed(message)
     }

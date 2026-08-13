@@ -50,13 +50,19 @@ struct RootView: View {
         }
         .onChange(of: session.status) { _, status in
             if status == .connected {
-                history.activate(serverURL: settings.serverURL)
-                favorites.activate(serverURL: settings.serverURL)
-                if let client = session.client {
+                let libraryIdentifier = session.isDemoMode
+                    ? session.activeLibraryIdentifier
+                    : settings.serverURL
+                history.activate(serverURL: libraryIdentifier)
+                favorites.activate(serverURL: libraryIdentifier)
+                if !session.isDemoMode,
+                   let client = session.client {
                     player.restoreLastPlayback(
                         for: settings.serverURL,
                         using: client
                     )
+                } else {
+                    player.reset()
                 }
             } else {
                 player.reset()
@@ -68,7 +74,10 @@ struct RootView: View {
         }
         .onChange(of: player.qualifiedPlayEvent?.id) { _, _ in
             guard let event = player.qualifiedPlayEvent else { return }
-            history.record(event, for: settings.serverURL)
+            let libraryIdentifier = session.isDemoMode
+                ? session.activeLibraryIdentifier
+                : settings.serverURL
+            history.record(event, for: libraryIdentifier)
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
