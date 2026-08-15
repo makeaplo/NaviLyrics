@@ -213,3 +213,210 @@ struct AlbumView: View {
         return String(format: "%d:%02d", Int(time) / 60, Int(time) % 60)
     }
 }
+
+enum AlbumLibrarySortOption: String, CaseIterable, Hashable, Identifiable {
+    case recentlyAdded
+    case title
+    case artist
+    case year
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .recentlyAdded:
+            "最近添加"
+        case .title:
+            "专辑名称"
+        case .artist:
+            "艺术家"
+        case .year:
+            "发行年份"
+        }
+    }
+}
+
+enum AlbumLibraryLayout: String {
+    case grid
+    case list
+}
+
+struct AlbumLibraryView: View {
+    let client: SubsonicClient
+
+    @Environment(NavidromeSession.self) private var session
+    @AppStorage("library.albumSort") private var sortRawValue =
+        AlbumLibrarySortOption.recentlyAdded.rawValue
+    @AppStorage("library.albumLayout") private var layoutRawValue =
+        AlbumLibraryLayout.grid.rawValue
+
+    private var sortOption: AlbumLibrarySortOption {
+        AlbumLibrarySortOption(rawValue: sortRawValue) ?? .recentlyAdded
+    }
+
+    private var layout: AlbumLibraryLayout {
+        AlbumLibraryLayout(rawValue: layoutRawValue) ?? .grid
+    }
+
+    private var sortedAlbums: [SubsonicAlbum] {
+        switch sortOption {
+        case .recentlyAdded:
+            return session.albums
+        case .title:
+            return session.albums.sorted {
+                $0.title.localizedStandardCompare($1.title) == .orderedAscending
+            }
+        case .artist:
+            return session.albums.sorted {
+                let artistComparison = $0.artist.localizedStandardCompare($1.artist)
+                if artistComparison == .orderedSame {
+                    return $0.title.localizedStandardCompare($1.title)
+                        == .orderedAscending
+                }
+                return artistComparison == .orderedAscending
+            }
+        case .year:
+            return session.albums.sorted {
+                switch ($0.year, $1.year) {
+                case let (left?, right?) where left != right:
+                    return left > right
+                case (_?, nil):
+                    return true
+                case (nil, _?):
+                    return false
+                default:
+                    return $0.title.localizedStandardCompare($1.title)
+                        == .orderedAscending
+                }
+            }
+        }
+    }
+
+    var body: some View {
+        Group {
+            if sortedAlbums.isEmpty {
+                ContentUnavailableView(
+                    "没有专辑",
+                    systemImage: "square.stack",
+                    description: Text("音乐库中暂时没有可浏览的专辑")
+                )
+            } else if layout == .grid {
+                gridContent
+            } else {
+                listContent
+            }
+        }
+        .navigationTitle("全部专辑")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                sortMenu
+                Button {
+                    layoutRawValue = layout == .grid
+                        ? AlbumLibraryLayout.list.rawValue
+                        : AlbumLibraryLayout.grid.rawValue
+                } label: {
+                    Image(
+                        systemName: layout == .grid
+                            ? "list.bullet"
+                            : "square.grid.2x2"
+                    )
+                }
+                .accessibilityLabel(
+                    layout == .grid ? "切换为列表视图" : "切换为网格视图"
+                )
+            }
+        }
+        .refreshable {
+            await session.refreshLibrary()
+        }
+    }
+
+    private var sortMenu: some View {
+        Menu {
+            Picker("排序方式", selection: sortBinding) {
+                ForEach(AlbumLibrarySortOption.allCases) { option in
+                    Text(option.title).tag(option)
+                }
+            }
+        } label: {
+            Image(systemName: "arrow.up.arrow.down")
+        }
+        .accessibilityLabel("专辑排序")
+    }
+
+    private var sortBinding: Binding<AlbumLibrarySortOption> {
+        Binding(
+            get: { sortOption },
+            set: { sortRawValue = $0.rawValue }
+        )
+    }
+
+    private var gridContent: some View {
+        ScrollView {
+            LazyVGrid(
+                columns: [
+                    GridItem(.adaptive(minimum: 148), spacing: 16)
+                ],
+                spacing: 22
+            ) {
+                ForEach(sortedAlbums) { album in
+                    NavigationLink(value: album) {
+                        AlbumGridCard(
+                            album: album,
+                            artworkURL: client.coverURL(
+                                coverArt: album.coverArt,
+                                size: 400
+                            )
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+        }
+        .scrollIndicators(.hidden)
+    }
+
+    private var listContent: some View {
+        List(sortedAlbums) { album in
+            NavigationLink(value: album) {
+                AlbumRow(
+                    album: album,
+                    artworkURL: client.coverURL(
+                        coverArt: album.coverArt,
+                        size: 180
+                    )
+                )
+            }
+        }
+        .listStyle(.insetGrouped)
+    }
+}
+
+private struct AlbumGridCard: View {
+    let album: SubsonicAlbum
+    let artworkURL: URL?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            LibraryArtwork(url: artworkURL, size: 148)
+                .frame(maxWidth: .infinity)
+
+            Text(album.title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+
+            Text(album.artist.isEmpty ? "未知艺术家" : album.artist)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("打开专辑")
+    }
+}

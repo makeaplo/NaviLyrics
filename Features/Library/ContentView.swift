@@ -97,9 +97,9 @@ struct ContentView: View {
                 )
                 .listRowBackground(Color.clear)
             } else {
-                Section("最近添加 · \(session.albums.count)") {
+                Section {
                     ForEach(
-                        Array(session.albums.enumerated()),
+                        Array(session.albums.prefix(12).enumerated()),
                         id: \.offset
                     ) { _, album in
                         NavigationLink(value: album) {
@@ -110,6 +110,16 @@ struct ContentView: View {
                                 )
                             )
                         }
+                    }
+                } header: {
+                    HStack {
+                        Text("最近添加")
+                        Spacer()
+                        NavigationLink(value: LibraryRoute.albums) {
+                            Text("查看全部")
+                                .font(.caption.weight(.semibold))
+                        }
+                        .accessibilityLabel("查看全部专辑")
                     }
                 }
             }

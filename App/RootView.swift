@@ -1,6 +1,7 @@
 import SwiftUI
 
 enum LibraryRoute: Hashable {
+    case albums
     case favorites
     case playlists
     case history(ListeningHistoryListKind)
@@ -119,6 +120,8 @@ struct RootView: View {
                     .navigationDestination(for: LibraryRoute.self) { route in
                         if let client = session.client {
                             switch route {
+                            case .albums:
+                                AlbumLibraryView(client: client)
                             case .favorites:
                                 FavoritesView(client: client)
                             case .playlists:
