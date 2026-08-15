@@ -36,6 +36,8 @@ struct RootView: View {
     @Environment(ListeningHistoryStore.self) private var history
     @Environment(PlaybackBehaviorStore.self) private var behavior
     @Environment(FavoritesStore.self) private var favorites
+    @Environment(PersonalizedRecommendationCache.self)
+    private var recommendationCache
     @State private var isPlayerPresented = false
     @State private var navigationPath = NavigationPath()
     @State private var selectedTab: MainTab = .library
@@ -68,6 +70,7 @@ struct RootView: View {
                 history.activate(serverURL: libraryIdentifier)
                 behavior.activate(serverURL: libraryIdentifier)
                 favorites.activate(serverURL: libraryIdentifier)
+                recommendationCache.activate(serverURL: libraryIdentifier)
                 if !session.isDemoMode,
                    let client = session.client {
                     player.restoreLastPlayback(
@@ -82,6 +85,7 @@ struct RootView: View {
                 history.deactivate()
                 behavior.deactivate()
                 favorites.deactivate()
+                recommendationCache.deactivate()
                 isPlayerPresented = false
                 navigationPath = NavigationPath()
                 selectedTab = .library

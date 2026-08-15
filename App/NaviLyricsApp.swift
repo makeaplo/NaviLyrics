@@ -8,6 +8,7 @@ struct NaviLyricsApp: App {
     @State private var history = ListeningHistoryStore()
     @State private var behavior = PlaybackBehaviorStore()
     @State private var favorites = FavoritesStore()
+    @State private var recommendationCache = PersonalizedRecommendationCache()
 
     var body: some Scene {
         WindowGroup {
@@ -18,6 +19,7 @@ struct NaviLyricsApp: App {
                 .environment(history)
                 .environment(behavior)
                 .environment(favorites)
+                .environment(recommendationCache)
         }
     }
 }

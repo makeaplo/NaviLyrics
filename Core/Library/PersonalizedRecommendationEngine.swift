@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 enum RecommendationReason: Hashable {
     case favoriteArtist(String)
@@ -314,5 +315,231 @@ private struct AlbumSignal {
     mutating func merge(_ summary: PlaybackBehaviorSummary) {
         playCount += summary.playCount
         completionCount += summary.completionCount
+    }
+}
+
+@MainActor
+@Observable
+final class PersonalizedRecommendationCache {
+    private struct PersistedCache: Codable {
+        var snapshotsByServer: [String: PersistedSnapshot] = [:]
+    }
+
+    private struct PersistedSnapshot: Codable {
+        let librarySignature: String
+        let signalSignature: String
+        let recommendations: [PersistedRecommendation]
+        let updatedAt: Date
+    }
+
+    private struct PersistedRecommendation: Codable {
+        let song: PersistedSong
+        let reason: PersistedReason
+        let score: Double
+
+        init(_ recommendation: PersonalizedRecommendation) {
+            song = PersistedSong(recommendation.song)
+            reason = PersistedReason(recommendation.reason)
+            score = recommendation.score
+        }
+
+        func makeRecommendation() -> PersonalizedRecommendation? {
+            guard let reason = reason.makeReason() else { return nil }
+            return PersonalizedRecommendation(
+                song: song.makeSong(),
+                reason: reason,
+                score: score
+            )
+        }
+    }
+
+    private struct PersistedSong: Codable {
+        let id: String
+        let title: String
+        let artist: String
+        let album: String
+        let duration: TimeInterval
+        let suffix: String?
+        let bitRate: Int?
+        let coverArt: String?
+        let isStarred: Bool
+
+        init(_ song: SubsonicSong) {
+            id = song.id
+            title = song.title
+            artist = song.artist
+            album = song.album
+            duration = song.duration
+            suffix = song.suffix
+            bitRate = song.bitRate
+            coverArt = song.coverArt
+            isStarred = song.isStarred
+        }
+
+        func makeSong() -> SubsonicSong {
+            SubsonicSong(
+                id: id,
+                title: title,
+                artist: artist,
+                album: album,
+                duration: duration,
+                suffix: suffix,
+                bitRate: bitRate,
+                coverArt: coverArt,
+                isStarred: isStarred
+            )
+        }
+    }
+
+    private struct PersistedReason: Codable {
+        enum Kind: String, Codable {
+            case favoriteArtist
+            case favoriteAlbum
+            case familiarArtist
+            case revisitArtist
+            case discover
+        }
+
+        let kind: Kind
+        let value: String?
+
+        init(_ reason: RecommendationReason) {
+            switch reason {
+            case let .favoriteArtist(artist):
+                kind = .favoriteArtist
+                value = artist
+            case let .favoriteAlbum(album):
+                kind = .favoriteAlbum
+                value = album
+            case let .familiarArtist(artist):
+                kind = .familiarArtist
+                value = artist
+            case let .revisitArtist(artist):
+                kind = .revisitArtist
+                value = artist
+            case .discover:
+                kind = .discover
+                value = nil
+            }
+        }
+
+        func makeReason() -> RecommendationReason? {
+            switch kind {
+            case .favoriteArtist:
+                guard let value else { return nil }
+                return .favoriteArtist(value)
+            case .favoriteAlbum:
+                guard let value else { return nil }
+                return .favoriteAlbum(value)
+            case .familiarArtist:
+                guard let value else { return nil }
+                return .familiarArtist(value)
+            case .revisitArtist:
+                guard let value else { return nil }
+                return .revisitArtist(value)
+            case .discover:
+                return .discover
+            }
+        }
+    }
+
+    private let defaults: UserDefaults
+    private let storageKey = "personalizedRecommendationCache.v1"
+
+    private(set) var activeServerURL = ""
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    func activate(serverURL: String) {
+        let normalizedURL = Self.normalizedServerURL(serverURL)
+        guard activeServerURL != normalizedURL else { return }
+        activeServerURL = normalizedURL
+    }
+
+    func deactivate() {
+        activeServerURL = ""
+    }
+
+    func cachedRecommendations(
+        librarySignature: String,
+        signalSignature: String
+    ) -> [PersonalizedRecommendation]? {
+        guard !activeServerURL.isEmpty,
+              let snapshot = persistedCache()
+                .snapshotsByServer[activeServerURL],
+              snapshot.librarySignature == librarySignature,
+              snapshot.signalSignature == signalSignature else {
+            return nil
+        }
+
+        return snapshot.recommendations.compactMap {
+            $0.makeRecommendation()
+        }
+    }
+
+    func save(
+        _ recommendations: [PersonalizedRecommendation],
+        librarySignature: String,
+        signalSignature: String
+    ) {
+        guard !activeServerURL.isEmpty else { return }
+
+        var cache = persistedCache()
+        cache.snapshotsByServer[activeServerURL] = PersistedSnapshot(
+            librarySignature: librarySignature,
+            signalSignature: signalSignature,
+            recommendations: recommendations.map(PersistedRecommendation.init),
+            updatedAt: Date()
+        )
+        save(cache)
+    }
+
+    private func persistedCache() -> PersistedCache {
+        guard let data = defaults.data(forKey: storageKey),
+              let cache = try? JSONDecoder().decode(
+                PersistedCache.self,
+                from: data
+              ) else {
+            return PersistedCache()
+        }
+        return cache
+    }
+
+    private func save(_ cache: PersistedCache) {
+        guard let data = try? JSONEncoder().encode(cache) else { return }
+        defaults.set(data, forKey: storageKey)
+    }
+
+    private static func normalizedServerURL(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+
+        let candidate = trimmed.contains("://")
+            ? trimmed
+            : "http://\(trimmed)"
+        guard var components = URLComponents(string: candidate),
+              let host = components.host?.lowercased() else {
+            return trimmed
+                .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                .lowercased()
+        }
+
+        components.scheme = components.scheme?.lowercased()
+        components.host = host
+        components.query = nil
+        components.fragment = nil
+        if components.path == "/" {
+            components.path = ""
+        } else {
+            components.path = components.path.trimmingCharacters(
+                in: CharacterSet(charactersIn: "/")
+            )
+            if !components.path.isEmpty {
+                components.path = "/\(components.path)"
+            }
+        }
+        return components.string ?? candidate.lowercased()
     }
 }

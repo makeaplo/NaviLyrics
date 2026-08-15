@@ -6,6 +6,8 @@ struct ForYouView: View {
     @Environment(ListeningHistoryStore.self) private var history
     @Environment(PlaybackBehaviorStore.self) private var behavior
     @Environment(FavoritesStore.self) private var favorites
+    @Environment(PersonalizedRecommendationCache.self)
+    private var recommendationCache
     @Environment(\.playerPresentation) private var playerPresentation
     @State private var recommendations: [PersonalizedRecommendation] = []
     @State private var recommendationLibrarySongs: [SubsonicSong] = []
@@ -82,7 +84,7 @@ struct ForYouView: View {
                     .font(.footnote.weight(.semibold))
                 }
                 .font(.footnote)
-            } else if recommendations.isEmpty {
+            } else if visibleRecommendations.isEmpty {
                 Text("播放几首歌或收藏歌曲后，这里会出现只属于你的推荐。")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -90,7 +92,7 @@ struct ForYouView: View {
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: 14) {
-                        ForEach(recommendations) { recommendation in
+                        ForEach(visibleRecommendations) { recommendation in
                             RecommendationCard(
                                 recommendation: recommendation,
                                 artworkURL: client.coverURL(
@@ -124,7 +126,7 @@ struct ForYouView: View {
                 .disabled(isLoadingRecommendations)
             }
         } footer: {
-            if !recommendations.isEmpty {
+            if !visibleRecommendations.isEmpty {
                 Text("推荐只使用本机播放和收藏记录，不会上传到 Navidrome。")
             }
         }
@@ -132,6 +134,16 @@ struct ForYouView: View {
 
     private var recommendationRequest: String {
         let albumSignature = session.albums.map(\.id).joined(separator: ",")
+        let signalSignature = recommendationSignalSignature
+        return [
+            session.activeLibraryIdentifier,
+            albumSignature,
+            signalSignature,
+            "\(recommendationReloadRevision)",
+        ].joined(separator: "||")
+    }
+
+    private var recommendationSignalSignature: String {
         let behaviorSignature = behavior.items.map { item in
             [
                 item.id,
@@ -141,15 +153,21 @@ struct ForYouView: View {
                 "\(item.lastPlayedAt?.timeIntervalSince1970 ?? 0)",
             ].joined(separator: ":")
         }.joined(separator: "|")
-        let favoriteSignature = favorites.songs.map(\.id).joined(separator: ",")
+        let favoriteSignature = favorites.songs
+            .map(\.id)
+            .sorted()
+            .joined(separator: ",")
         return [
-            session.activeLibraryIdentifier,
-            albumSignature,
             behaviorSignature,
             favoriteSignature,
-            player.currentSong?.id ?? "",
-            "\(recommendationReloadRevision)",
         ].joined(separator: "||")
+    }
+
+    private var visibleRecommendations: [PersonalizedRecommendation] {
+        guard let currentSongID = player.currentSong?.id else {
+            return recommendations
+        }
+        return recommendations.filter { $0.song.id != currentSongID }
     }
 
     private func loadRecommendations(
@@ -157,6 +175,7 @@ struct ForYouView: View {
         force: Bool = false
     ) async {
         let librarySignature = session.albums.map(\.id).joined(separator: ",")
+        let signalSignature = recommendationSignalSignature
         if force || recommendationLibrarySignature != librarySignature {
             recommendationLibrarySignature = librarySignature
             recommendationLibrarySongs = []
@@ -166,6 +185,18 @@ struct ForYouView: View {
             || behavior.items.contains(where: \.hasPositiveSignal)
         guard hasPersonalSignal else {
             recommendations = []
+            recommendationErrorMessage = nil
+            isLoadingRecommendations = false
+            return
+        }
+
+        if !force,
+           let cachedRecommendations = recommendationCache
+                .cachedRecommendations(
+                    librarySignature: librarySignature,
+                    signalSignature: signalSignature
+                ) {
+            recommendations = cachedRecommendations
             recommendationErrorMessage = nil
             isLoadingRecommendations = false
             return
@@ -192,8 +223,12 @@ struct ForYouView: View {
             songs: recommendationLibrarySongs,
             behavior: behavior.items,
             favorites: favorites.songs,
-            excludedSongIDs: player.currentSong.map { Set([$0.id]) } ?? [],
             limit: 8
+        )
+        recommendationCache.save(
+            recommendations,
+            librarySignature: librarySignature,
+            signalSignature: signalSignature
         )
         recommendationErrorMessage = nil
         isLoadingRecommendations = false
