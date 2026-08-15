@@ -77,7 +77,7 @@ struct LibrarySongRow: View {
             .accessibilityLabel(
                 "\(song.title)，\(song.artist)，\(Self.timeString(song.duration))"
             )
-            .accessibilityHint("播放并从此处继续列表")
+            .accessibilityHint("播放并从此处继续列表；长按查看更多操作")
 
             FavoriteButton(
                 isFavorite: isFavorite,

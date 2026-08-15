@@ -22,6 +22,7 @@ enum NowPlayingAnimation {
 
 struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(AppSettings.self) private var settings
     @Environment(PlayerStore.self) private var player
     @Environment(NavidromeSession.self) private var session
@@ -45,7 +46,7 @@ struct RootView: View {
                 LoginView()
             }
         }
-        .animation(.easeInOut(duration: 0.22), value: session.status)
+        .animation(statusAnimation, value: session.status)
         .task {
             guard session.status == .checking else { return }
             await session.restore(using: settings)
@@ -155,14 +156,7 @@ struct RootView: View {
                     namespace: playerNamespace
                 )
                 .zIndex(1)
-                .transition(
-                    .asymmetric(
-                        insertion: .move(edge: .bottom)
-                            .combined(with: .opacity),
-                        removal: .move(edge: .bottom)
-                            .combined(with: .opacity)
-                    )
-                )
+                .transition(playerTransition)
             }
         }
         .background(Color.black.ignoresSafeArea())
@@ -171,11 +165,7 @@ struct RootView: View {
             Binding(
                 get: { isPlayerPresented },
                 set: { presented in
-                    withAnimation(
-                        presented
-                            ? NowPlayingAnimation.open
-                            : NowPlayingAnimation.dismiss
-                    ) {
+                    withAnimation(playerPresentationAnimation(for: presented)) {
                         isPlayerPresented = presented
                     }
                 }
@@ -185,12 +175,36 @@ struct RootView: View {
             if !isPlayerPresented,
                player.currentSong != nil {
                 MiniPlayerBar(namespace: playerNamespace) {
-                    withAnimation(NowPlayingAnimation.open) {
+                    withAnimation(playerPresentationAnimation(for: true)) {
                         isPlayerPresented = true
                     }
                 }
             }
         }
+    }
+
+    private var statusAnimation: Animation? {
+        reduceMotion ? nil : .easeInOut(duration: 0.22)
+    }
+
+    private func playerPresentationAnimation(
+        for presented: Bool
+    ) -> Animation? {
+        reduceMotion
+            ? nil
+            : (presented
+                ? NowPlayingAnimation.open
+                : NowPlayingAnimation.dismiss)
+    }
+
+    private var playerTransition: AnyTransition {
+        if reduceMotion {
+            return .opacity
+        }
+        return .asymmetric(
+            insertion: .move(edge: .bottom).combined(with: .opacity),
+            removal: .move(edge: .bottom).combined(with: .opacity)
+        )
     }
 }
 
@@ -279,6 +293,7 @@ private struct MiniPlayerBar: View {
 private struct PlayerOverlay: View {
     @Binding var isPresented: Bool
     let namespace: Namespace.ID
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var dragOffset: CGFloat = 0
 
     var body: some View {
@@ -311,10 +326,12 @@ private struct PlayerOverlay: View {
     }
 
     private var cornerRadius: CGFloat {
-        min(max(dragOffset / 5, 0), 22)
+        guard !reduceMotion else { return 0 }
+        return min(max(dragOffset / 5, 0), 22)
     }
 
     private func scale(for height: CGFloat) -> CGFloat {
+        guard !reduceMotion else { return 1 }
         let progress = min(max(dragOffset / max(height * 0.78, 1), 0), 1)
         return 1 - progress * 0.04
     }
@@ -339,11 +356,11 @@ private struct PlayerOverlay: View {
                     || predictedTranslation > height * 0.28
 
                 if shouldDismiss {
-                    withAnimation(NowPlayingAnimation.dismiss) {
+                    withAnimation(reduceMotion ? nil : NowPlayingAnimation.dismiss) {
                         isPresented = false
                     }
                 } else {
-                    withAnimation(NowPlayingAnimation.dismiss) {
+                    withAnimation(reduceMotion ? nil : NowPlayingAnimation.dismiss) {
                         dragOffset = 0
                     }
                 }

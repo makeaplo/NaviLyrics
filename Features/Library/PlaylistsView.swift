@@ -741,5 +741,6 @@ struct PlaylistRow: View {
             }
         }
         .accessibilityElement(children: .combine)
+        .accessibilityHint("打开歌单")
     }
 }

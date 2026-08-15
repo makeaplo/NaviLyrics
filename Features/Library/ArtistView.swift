@@ -75,6 +75,7 @@ struct ArtistView: View {
 struct ArtistLibraryView: View {
     let client: SubsonicClient
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var artists: [SubsonicArtist] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
@@ -128,7 +129,9 @@ struct ArtistLibraryView: View {
         ScrollViewReader { proxy in
             VStack(spacing: 0) {
                 letterPicker { key in
-                    withAnimation(.easeInOut(duration: 0.2)) {
+                    withAnimation(
+                        reduceMotion ? nil : .easeInOut(duration: 0.2)
+                    ) {
                         proxy.scrollTo(key, anchor: .top)
                     }
                 }
@@ -180,7 +183,7 @@ struct ArtistLibraryView: View {
                     .foregroundStyle(.tint)
                     .frame(minWidth: 30, minHeight: 30)
                     .background(.quaternary, in: Capsule())
-                    .accessibilityLabel("跳转到(group.key)")
+                    .accessibilityLabel("跳转到\(group.key)")
                 }
             }
             .padding(.horizontal, 16)

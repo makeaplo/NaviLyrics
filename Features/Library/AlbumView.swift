@@ -246,6 +246,7 @@ struct AlbumLibraryView: View {
     let client: SubsonicClient
 
     @Environment(NavidromeSession.self) private var session
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("library.albumSort") private var sortRawValue =
         AlbumLibrarySortOption.recentlyAdded.rawValue
     @AppStorage("library.albumLayout") private var layoutRawValue =
@@ -331,6 +332,14 @@ struct AlbumLibraryView: View {
         .refreshable {
             await session.refreshLibrary()
         }
+        .animation(
+            reduceMotion ? nil : .snappy(duration: 0.28),
+            value: layout
+        )
+        .animation(
+            reduceMotion ? nil : .snappy(duration: 0.28),
+            value: sortOption
+        )
     }
 
     private var sortMenu: some View {
@@ -425,6 +434,6 @@ private struct AlbumGridCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
-        .accessibilityHint("打开专辑")
+        .accessibilityHint("打开专辑；长按查看更多操作")
     }
 }

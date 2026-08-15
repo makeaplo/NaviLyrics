@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ContentView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(NavidromeSession.self) private var session
     @Environment(PlayerStore.self) private var player
     @Environment(ListeningHistoryStore.self) private var history
@@ -331,7 +332,10 @@ struct ContentView: View {
                 searchSections(client: client)
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: isSearching)
+        .animation(
+            reduceMotion ? nil : .easeInOut(duration: 0.2),
+            value: isSearching
+        )
     }
 
     private var searchScopeBar: some View {
@@ -339,7 +343,9 @@ struct ContentView: View {
             HStack(spacing: 8) {
                 ForEach(LibrarySearchScope.allCases) { scope in
                     Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
+                        withAnimation(
+                            reduceMotion ? nil : .easeInOut(duration: 0.2)
+                        ) {
                             searchScope = scope
                         }
                     } label: {
@@ -790,6 +796,7 @@ struct AlbumRow: View {
             }
         }
         .accessibilityElement(children: .combine)
+        .accessibilityHint("打开专辑；长按查看更多操作")
     }
 }
 
@@ -815,5 +822,6 @@ struct ArtistRow: View {
             }
         }
         .accessibilityElement(children: .combine)
+        .accessibilityHint("打开艺术家")
     }
 }
