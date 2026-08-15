@@ -113,23 +113,35 @@ struct RootView: View {
     private var authenticatedContent: some View {
         ZStack {
             NavigationStack(path: $navigationPath) {
-                Group {
-                    if let client = session.client {
-                        switch selectedTab {
-                        case .library:
-                            ContentView()
-                        case .forYou:
-                            ForYouView()
-                        case .favorites:
-                            FavoritesView(client: client)
-                        case .playlists:
-                            PlaylistsView(client: client)
+                VStack(spacing: 0) {
+                    Group {
+                        if let client = session.client {
+                            switch selectedTab {
+                            case .library:
+                                ContentView()
+                            case .forYou:
+                                ForYouView()
+                            case .favorites:
+                                FavoritesView(client: client)
+                            case .playlists:
+                                PlaylistsView(client: client)
+                            }
+                        } else {
+                            ProgressView("正在连接音乐库…")
                         }
-                    } else {
-                        ProgressView("正在连接音乐库…")
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                    BottomAccessory(
+                        selection: $selectedTab,
+                        isPlayerPresented: isPlayerPresented,
+                        namespace: playerNamespace
+                    ) {
+                        withAnimation(playerPresentationAnimation(for: true)) {
+                            isPlayerPresented = true
+                        }
                     }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .navigationDestination(for: SubsonicAlbum.self) { album in
                     if let client = session.client {
                         AlbumView(client: client, album: album)
@@ -187,17 +199,6 @@ struct RootView: View {
                 )
                 .zIndex(1)
                 .transition(playerTransition)
-            }
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            BottomAccessory(
-                selection: $selectedTab,
-                isPlayerPresented: isPlayerPresented,
-                namespace: playerNamespace
-            ) {
-                withAnimation(playerPresentationAnimation(for: true)) {
-                    isPlayerPresented = true
-                }
             }
         }
         .background(
