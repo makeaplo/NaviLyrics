@@ -32,10 +32,27 @@ struct ListeningHistoryItem: Codable, Hashable, Identifiable {
     }
 }
 
+enum PlaybackEventKind: String, Codable, Hashable, Sendable {
+    case qualified
+    case completed
+    case skipped
+}
+
 struct PlaybackHistoryEvent: Identifiable {
     let id = UUID()
     let song: NowPlayingSong
     let playedAt: Date
+    let kind: PlaybackEventKind
+
+    init(
+        song: NowPlayingSong,
+        playedAt: Date,
+        kind: PlaybackEventKind = .qualified
+    ) {
+        self.song = song
+        self.playedAt = playedAt
+        self.kind = kind
+    }
 }
 
 @MainActor
@@ -76,7 +93,10 @@ final class ListeningHistoryStore {
 
     func record(_ event: PlaybackHistoryEvent, for serverURL: String) {
         activate(serverURL: serverURL)
-        guard !activeServerURL.isEmpty else { return }
+        guard !activeServerURL.isEmpty,
+              event.kind == .qualified else {
+            return
+        }
 
         let song = event.song
         if let index = items.firstIndex(where: { $0.id == song.id }) {

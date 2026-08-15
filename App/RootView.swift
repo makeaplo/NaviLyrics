@@ -27,6 +27,7 @@ struct RootView: View {
     @Environment(PlayerStore.self) private var player
     @Environment(NavidromeSession.self) private var session
     @Environment(ListeningHistoryStore.self) private var history
+    @Environment(PlaybackBehaviorStore.self) private var behavior
     @Environment(FavoritesStore.self) private var favorites
     @State private var isPlayerPresented = false
     @State private var navigationPath = NavigationPath()
@@ -57,6 +58,7 @@ struct RootView: View {
                     ? session.activeLibraryIdentifier
                     : settings.serverURL
                 history.activate(serverURL: libraryIdentifier)
+                behavior.activate(serverURL: libraryIdentifier)
                 favorites.activate(serverURL: libraryIdentifier)
                 if !session.isDemoMode,
                    let client = session.client {
@@ -70,6 +72,7 @@ struct RootView: View {
             } else {
                 player.reset()
                 history.deactivate()
+                behavior.deactivate()
                 favorites.deactivate()
                 isPlayerPresented = false
                 navigationPath = NavigationPath()
@@ -81,6 +84,7 @@ struct RootView: View {
                 ? session.activeLibraryIdentifier
                 : settings.serverURL
             history.record(event, for: libraryIdentifier)
+            behavior.record(event, for: libraryIdentifier)
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {

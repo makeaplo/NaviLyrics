@@ -237,7 +237,6 @@ final class PlayerStore {
         isPlaying = false
         isBuffering = false
         playbackErrorMessage = nil
-        qualifiedPlayEvent = nil
         accumulatedPlaybackTime = 0
         lastObservedProgress = nil
         hasQualifiedCurrentPlay = false
@@ -407,6 +406,7 @@ final class PlayerStore {
             pause()
             return
         }
+        emitPlaybackEvent(.skipped)
         persistPlaybackState(force: true)
         let nextIndex = queueIndex + 1
         self.queueIndex = nextIndex
@@ -604,7 +604,7 @@ final class PlayerStore {
                 self.updateNowPlayingInfo()
                 if self.duration > 0,
                    self.progress >= self.duration {
-                    self.playNext()
+                    self.finishCurrentSong()
                     return
                 }
             }
@@ -664,7 +664,7 @@ final class PlayerStore {
                       self.playbackGeneration == generation else {
                     return
                 }
-                self.playNext()
+                self.finishCurrentSong()
             }
         }
 
@@ -757,7 +757,7 @@ final class PlayerStore {
     private func recordQualifiedPlayIfNeeded() {
         guard !hasQualifiedCurrentPlay,
               isPlaying,
-              let currentSong else {
+              currentSong != nil else {
             return
         }
 
@@ -772,10 +772,32 @@ final class PlayerStore {
         }
 
         hasQualifiedCurrentPlay = true
+        emitPlaybackEvent(.qualified)
+    }
+
+    private func emitPlaybackEvent(_ kind: PlaybackEventKind) {
+        guard let currentSong else { return }
         qualifiedPlayEvent = PlaybackHistoryEvent(
             song: currentSong,
-            playedAt: Date()
+            playedAt: Date(),
+            kind: kind
         )
+    }
+
+    private func finishCurrentSong() {
+        guard currentSong != nil else { return }
+        emitPlaybackEvent(.completed)
+
+        guard let queueIndex,
+              queue.indices.contains(queueIndex + 1) else {
+            pause()
+            return
+        }
+
+        persistPlaybackState(force: true)
+        let nextIndex = queueIndex + 1
+        self.queueIndex = nextIndex
+        loadCurrentSong(queue[nextIndex], autoplay: true)
     }
 
     private func tearDownPlayer() {

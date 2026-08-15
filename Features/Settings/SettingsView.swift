@@ -6,6 +6,7 @@ struct SettingsView: View {
     @Environment(NavidromeSession.self) private var session
     @Environment(PlayerStore.self) private var player
     @Environment(ListeningHistoryStore.self) private var history
+    @Environment(PlaybackBehaviorStore.self) private var behavior
     @Environment(\.dismiss) private var dismiss
     @State private var showSignOutConfirmation = false
     @State private var showResetConfirmation = false
@@ -189,6 +190,7 @@ struct SettingsView: View {
                     role: .destructive
                 ) {
                     history.clearCurrentServerHistory()
+                    behavior.clearCurrentServerBehavior()
                     if session.isDemoMode {
                         player.reset()
                         session.requireSignIn()
@@ -213,6 +215,7 @@ struct SettingsView: View {
             ) {
                 Button("清除播放记录", role: .destructive) {
                     history.clearCurrentServerHistory()
+                    behavior.clearCurrentServerBehavior()
                 }
                 Button("取消", role: .cancel) {}
             } message: {
