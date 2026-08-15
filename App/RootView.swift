@@ -143,41 +143,42 @@ struct RootView: View {
 
                     MainTabBar(selection: $selectedTab)
                 }
-            }
-            .navigationDestination(for: SubsonicAlbum.self) { album in
-                if let client = session.client {
-                    AlbumView(client: client, album: album)
+                .navigationDestination(for: SubsonicAlbum.self) { album in
+                    if let client = session.client {
+                        AlbumView(client: client, album: album)
+                    }
                 }
-            }
-            .navigationDestination(for: SubsonicArtist.self) { artist in
-                if let client = session.client {
-                    ArtistView(client: client, artist: artist)
+                .navigationDestination(for: SubsonicArtist.self) { artist in
+                    if let client = session.client {
+                        ArtistView(client: client, artist: artist)
+                    }
                 }
-            }
-            .navigationDestination(for: SubsonicPlaylist.self) { playlist in
-                if let client = session.client {
-                    PlaylistDetailView(
-                        playlist: playlist,
-                        client: client
-                    )
+                .navigationDestination(for: SubsonicPlaylist.self) { playlist in
+                    if let client = session.client {
+                        PlaylistDetailView(
+                            playlist: playlist,
+                            client: client
+                        )
+                    }
                 }
-            }
-            .navigationDestination(for: LibraryRoute.self) { route in
-                if let client = session.client {
-                    switch route {
-                    case .albums:
-                        AlbumLibraryView(client: client)
-                    case .artists:
-                        ArtistLibraryView(client: client)
-                    case .favorites:
-                        FavoritesView(client: client)
-                    case .playlists:
-                        PlaylistsView(client: client)
-                    case let .history(kind):
-                        SmartSongListView(kind: kind, client: client)
+                .navigationDestination(for: LibraryRoute.self) { route in
+                    if let client = session.client {
+                        switch route {
+                        case .albums:
+                            AlbumLibraryView(client: client)
+                        case .artists:
+                            ArtistLibraryView(client: client)
+                        case .favorites:
+                            FavoritesView(client: client)
+                        case .playlists:
+                            PlaylistsView(client: client)
+                        case let .history(kind):
+                            SmartSongListView(kind: kind, client: client)
+                        }
                     }
                 }
             }
+            .toolbarBackground(.hidden, for: .navigationBar)
             .scaleEffect(isPlayerPresented ? 0.965 : 1)
             .blur(radius: isPlayerPresented ? 2 : 0)
             .clipShape(
@@ -201,7 +202,10 @@ struct RootView: View {
                 .transition(playerTransition)
             }
         }
-        .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+        .background(
+            Color(uiColor: .systemGroupedBackground)
+                .ignoresSafeArea()
+        )
         .environment(
             \.playerPresentation,
             Binding(
@@ -269,9 +273,6 @@ private struct MainTabBar: View {
         .padding(.top, 6)
         .padding(.bottom, 6)
         .background(.bar)
-        .overlay(alignment: .top) {
-            Divider()
-        }
     }
 
     private func tabButton(
@@ -313,6 +314,9 @@ private struct MiniPlayerBar: View {
             )
             .progressViewStyle(.linear)
             .tint(.accentColor)
+            .frame(height: 1)
+            .padding(.horizontal, 10)
+            .opacity(0.65)
 
             HStack(spacing: 12) {
                 Button(action: onOpenPlayer) {
@@ -378,7 +382,6 @@ private struct MiniPlayerBar: View {
             .padding(.vertical, 8)
         }
         .background(.ultraThinMaterial)
-        .overlay(alignment: .top) { Divider() }
     }
 }
 
