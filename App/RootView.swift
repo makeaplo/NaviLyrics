@@ -165,17 +165,6 @@ struct RootView: View {
                     }
                 }
             }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                BottomAccessory(
-                    selection: $selectedTab,
-                    isPlayerPresented: isPlayerPresented,
-                    namespace: playerNamespace
-                ) {
-                    withAnimation(playerPresentationAnimation(for: true)) {
-                        isPlayerPresented = true
-                    }
-                }
-            }
             .toolbarBackground(.hidden, for: .navigationBar)
             .scaleEffect(isPlayerPresented ? 0.965 : 1)
             .blur(radius: isPlayerPresented ? 2 : 0)
@@ -198,6 +187,17 @@ struct RootView: View {
                 )
                 .zIndex(1)
                 .transition(playerTransition)
+            }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            BottomAccessory(
+                selection: $selectedTab,
+                isPlayerPresented: isPlayerPresented,
+                namespace: playerNamespace
+            ) {
+                withAnimation(playerPresentationAnimation(for: true)) {
+                    isPlayerPresented = true
+                }
             }
         }
         .background(
