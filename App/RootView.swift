@@ -8,6 +8,13 @@ enum LibraryRoute: Hashable {
     case history(ListeningHistoryListKind)
 }
 
+enum MainTab: Hashable {
+    case library
+    case forYou
+    case favorites
+    case playlists
+}
+
 enum NowPlayingAnimation {
     static let artworkID = "now-playing-artwork"
     static let open = Animation.spring(
@@ -31,6 +38,7 @@ struct RootView: View {
     @Environment(FavoritesStore.self) private var favorites
     @State private var isPlayerPresented = false
     @State private var navigationPath = NavigationPath()
+    @State private var selectedTab: MainTab = .library
     @Namespace private var playerNamespace
 
     var body: some View {
@@ -76,6 +84,7 @@ struct RootView: View {
                 favorites.deactivate()
                 isPlayerPresented = false
                 navigationPath = NavigationPath()
+                selectedTab = .library
             }
         }
         .onChange(of: player.qualifiedPlayEvent?.id) { _, _ in
@@ -104,41 +113,69 @@ struct RootView: View {
     private var authenticatedContent: some View {
         ZStack {
             NavigationStack(path: $navigationPath) {
-                ContentView()
-                    .navigationDestination(for: SubsonicAlbum.self) { album in
-                        if let client = session.client {
-                            AlbumView(client: client, album: album)
-                        }
-                    }
-                    .navigationDestination(for: SubsonicArtist.self) { artist in
-                        if let client = session.client {
-                            ArtistView(client: client, artist: artist)
-                        }
-                    }
-                    .navigationDestination(for: SubsonicPlaylist.self) { playlist in
-                        if let client = session.client {
-                            PlaylistDetailView(
-                                playlist: playlist,
-                                client: client
-                            )
-                        }
-                    }
-                    .navigationDestination(for: LibraryRoute.self) { route in
-                        if let client = session.client {
-                            switch route {
-                            case .albums:
-                                AlbumLibraryView(client: client)
-                            case .artists:
-                                ArtistLibraryView(client: client)
-                            case .favorites:
-                                FavoritesView(client: client)
-                            case .playlists:
-                                PlaylistsView(client: client)
-                            case let .history(kind):
-                                SmartSongListView(kind: kind, client: client)
+                if let client = session.client {
+                    TabView(selection: $selectedTab) {
+                        ContentView()
+                            .tabItem {
+                                Label("音乐库", systemImage: "music.note.list")
                             }
-                        }
+                            .tag(MainTab.library)
+
+                        ForYouView()
+                            .tabItem {
+                                Label("为你", systemImage: "sparkles")
+                            }
+                            .tag(MainTab.forYou)
+
+                        FavoritesView(client: client)
+                            .tabItem {
+                                Label("收藏", systemImage: "heart")
+                            }
+                            .tag(MainTab.favorites)
+
+                        PlaylistsView(client: client)
+                            .tabItem {
+                                Label("歌单", systemImage: "rectangle.stack")
+                            }
+                            .tag(MainTab.playlists)
                     }
+                } else {
+                    ProgressView("正在连接音乐库…")
+                }
+            }
+            .navigationDestination(for: SubsonicAlbum.self) { album in
+                if let client = session.client {
+                    AlbumView(client: client, album: album)
+                }
+            }
+            .navigationDestination(for: SubsonicArtist.self) { artist in
+                if let client = session.client {
+                    ArtistView(client: client, artist: artist)
+                }
+            }
+            .navigationDestination(for: SubsonicPlaylist.self) { playlist in
+                if let client = session.client {
+                    PlaylistDetailView(
+                        playlist: playlist,
+                        client: client
+                    )
+                }
+            }
+            .navigationDestination(for: LibraryRoute.self) { route in
+                if let client = session.client {
+                    switch route {
+                    case .albums:
+                        AlbumLibraryView(client: client)
+                    case .artists:
+                        ArtistLibraryView(client: client)
+                    case .favorites:
+                        FavoritesView(client: client)
+                    case .playlists:
+                        PlaylistsView(client: client)
+                    case let .history(kind):
+                        SmartSongListView(kind: kind, client: client)
+                    }
+                }
             }
             .scaleEffect(isPlayerPresented ? 0.965 : 1)
             .blur(radius: isPlayerPresented ? 2 : 0)
@@ -163,7 +200,7 @@ struct RootView: View {
                 .transition(playerTransition)
             }
         }
-        .background(Color.black.ignoresSafeArea())
+        .background(Color(uiColor: .systemBackground).ignoresSafeArea())
         .environment(
             \.playerPresentation,
             Binding(
