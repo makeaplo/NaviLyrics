@@ -42,7 +42,8 @@ struct ArtistView: View {
                                 artworkURL: client.coverURL(
                                     coverArt: album.coverArt,
                                     size: 180
-                                )
+                                ),
+                                client: client
                             )
                         }
                     }

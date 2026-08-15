@@ -109,7 +109,8 @@ struct ContentView: View {
                                 album: album,
                                 artworkURL: client.coverURL(
                                     coverArt: album.coverArt
-                                )
+                                ),
+                                client: client
                             )
                         }
                     }
@@ -394,6 +395,7 @@ struct ContentView: View {
                         isFavoriteUpdating: favorites.isUpdating(
                             songID: song.id
                         ),
+                        client: client,
                         onPlay: {
                             playSearchResult(at: index, using: client)
                         },
@@ -414,7 +416,8 @@ struct ContentView: View {
                             artworkURL: client.coverURL(
                                 coverArt: album.coverArt,
                                 size: 180
-                            )
+                            ),
+                            client: client
                         )
                     }
                 }
@@ -746,8 +749,34 @@ private struct LibrarySearchRequest: Hashable {
 struct AlbumRow: View {
     let album: SubsonicAlbum
     let artworkURL: URL?
+    let quickActionClient: SubsonicClient?
 
+    init(
+        album: SubsonicAlbum,
+        artworkURL: URL?,
+        client: SubsonicClient? = nil
+    ) {
+        self.album = album
+        self.artworkURL = artworkURL
+        quickActionClient = client
+    }
+
+    @ViewBuilder
     var body: some View {
+        if let quickActionClient {
+            rowContent
+                .modifier(
+                    AlbumQuickActionsModifier(
+                        album: album,
+                        client: quickActionClient
+                    )
+                )
+        } else {
+            rowContent
+        }
+    }
+
+    private var rowContent: some View {
         HStack(spacing: 12) {
             LibraryArtwork(url: artworkURL, size: 54)
             VStack(alignment: .leading, spacing: 3) {

@@ -199,6 +199,28 @@ final class PlayerStore {
         loadCurrentSong(queue[index], autoplay: true)
     }
 
+    /// Adds songs after the current item or at the end of the queue.
+    /// If nothing is playing yet, the first song starts immediately.
+    func enqueue(
+        _ songs: [NowPlayingSong],
+        afterCurrent: Bool
+    ) {
+        guard !songs.isEmpty else { return }
+        guard let currentIndex = queueIndex,
+              currentSong != nil,
+              queue.indices.contains(currentIndex) else {
+            load(queue: songs, startingAt: 0)
+            return
+        }
+
+        let insertionIndex = afterCurrent
+            ? currentIndex + 1
+            : queue.count
+        queue.insert(contentsOf: songs, at: insertionIndex)
+        persistPlaybackState(force: true)
+        updateRemoteCommandAvailability()
+    }
+
     private func loadCurrentSong(
         _ song: NowPlayingSong,
         autoplay: Bool

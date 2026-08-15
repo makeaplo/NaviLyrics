@@ -8,6 +8,7 @@ struct LibrarySongRow: View {
     let metadata: String?
     let isFavorite: Bool
     let isFavoriteUpdating: Bool
+    let quickActionClient: SubsonicClient?
     let onPlay: () -> Void
     let onToggleFavorite: () -> Void
 
@@ -19,6 +20,7 @@ struct LibrarySongRow: View {
         metadata: String? = nil,
         isFavorite: Bool,
         isFavoriteUpdating: Bool,
+        client: SubsonicClient? = nil,
         onPlay: @escaping () -> Void,
         onToggleFavorite: @escaping () -> Void
     ) {
@@ -29,11 +31,28 @@ struct LibrarySongRow: View {
         self.metadata = metadata
         self.isFavorite = isFavorite
         self.isFavoriteUpdating = isFavoriteUpdating
+        quickActionClient = client
         self.onPlay = onPlay
         self.onToggleFavorite = onToggleFavorite
     }
 
+    @ViewBuilder
     var body: some View {
+        if let quickActionClient {
+            rowContent
+                .modifier(
+                    SongQuickActionsModifier(
+                        song: song,
+                        client: quickActionClient,
+                        isFavorite: isFavorite
+                    )
+                )
+        } else {
+            rowContent
+        }
+    }
+
+    private var rowContent: some View {
         HStack(spacing: 8) {
             Button(action: onPlay) {
                 HStack(spacing: 10) {

@@ -125,6 +125,7 @@ struct AlbumView: View {
                 fallback: song.isStarred
             ),
             isFavoriteUpdating: favorites.isUpdating(songID: song.id),
+            client: client,
             onPlay: { play(song, at: index) },
             onToggleFavorite: { toggleFavorite(song) }
         )
@@ -369,6 +370,12 @@ struct AlbumLibraryView: View {
                                 size: 400
                             )
                         )
+                        .modifier(
+                            AlbumQuickActionsModifier(
+                                album: album,
+                                client: client
+                            )
+                        )
                     }
                     .buttonStyle(.plain)
                 }
@@ -387,7 +394,8 @@ struct AlbumLibraryView: View {
                     artworkURL: client.coverURL(
                         coverArt: album.coverArt,
                         size: 180
-                    )
+                    ),
+                    client: client
                 )
             }
         }

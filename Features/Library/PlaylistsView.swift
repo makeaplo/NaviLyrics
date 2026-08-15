@@ -216,6 +216,7 @@ struct PlaylistDetailView: View {
                             isFavoriteUpdating: favorites.isUpdating(
                                 songID: song.id
                             ),
+                            client: client,
                             onPlay: { play(at: index) },
                             onToggleFavorite: {
                                 toggleFavorite(song)
