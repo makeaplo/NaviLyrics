@@ -113,36 +113,23 @@ struct RootView: View {
     private var authenticatedContent: some View {
         ZStack {
             NavigationStack(path: $navigationPath) {
-                VStack(spacing: 0) {
-                    Group {
-                        if let client = session.client {
-                            switch selectedTab {
-                            case .library:
-                                ContentView()
-                            case .forYou:
-                                ForYouView()
-                            case .favorites:
-                                FavoritesView(client: client)
-                            case .playlists:
-                                PlaylistsView(client: client)
-                            }
-                        } else {
-                            ProgressView("正在连接音乐库…")
+                Group {
+                    if let client = session.client {
+                        switch selectedTab {
+                        case .library:
+                            ContentView()
+                        case .forYou:
+                            ForYouView()
+                        case .favorites:
+                            FavoritesView(client: client)
+                        case .playlists:
+                            PlaylistsView(client: client)
                         }
+                    } else {
+                        ProgressView("正在连接音乐库…")
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                    if !isPlayerPresented,
-                       player.currentSong != nil {
-                        MiniPlayerBar(namespace: playerNamespace) {
-                            withAnimation(playerPresentationAnimation(for: true)) {
-                                isPlayerPresented = true
-                            }
-                        }
-                    }
-
-                    MainTabBar(selection: $selectedTab)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .navigationDestination(for: SubsonicAlbum.self) { album in
                     if let client = session.client {
                         AlbumView(client: client, album: album)
@@ -175,6 +162,17 @@ struct RootView: View {
                         case let .history(kind):
                             SmartSongListView(kind: kind, client: client)
                         }
+                    }
+                }
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                BottomAccessory(
+                    selection: $selectedTab,
+                    isPlayerPresented: isPlayerPresented,
+                    namespace: playerNamespace
+                ) {
+                    withAnimation(playerPresentationAnimation(for: true)) {
+                        isPlayerPresented = true
                     }
                 }
             }
@@ -244,6 +242,32 @@ struct RootView: View {
     }
 }
 
+private struct BottomAccessory: View {
+    @Environment(PlayerStore.self) private var player
+    @Binding var selection: MainTab
+    let isPlayerPresented: Bool
+    let namespace: Namespace.ID
+    let onOpenPlayer: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if !isPlayerPresented, player.currentSong != nil {
+                MiniPlayerBar(
+                    namespace: namespace,
+                    onOpenPlayer: onOpenPlayer
+                )
+            }
+
+            MainTabBar(selection: $selection)
+        }
+        .background {
+            Rectangle()
+                .fill(.bar)
+                .ignoresSafeArea(edges: .bottom)
+        }
+    }
+}
+
 private struct MainTabBar: View {
     @Binding var selection: MainTab
 
@@ -272,7 +296,6 @@ private struct MainTabBar: View {
         }
         .padding(.top, 6)
         .padding(.bottom, 6)
-        .background(.bar)
     }
 
     private func tabButton(
@@ -381,7 +404,6 @@ private struct MiniPlayerBar: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
         }
-        .background(.ultraThinMaterial)
     }
 }
 
