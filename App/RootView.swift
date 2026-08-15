@@ -262,7 +262,7 @@ private struct BottomAccessory: View {
         }
         .background {
             Rectangle()
-                .fill(.bar)
+                .fill(Color(uiColor: .systemGroupedBackground))
                 .ignoresSafeArea(edges: .bottom)
         }
     }
