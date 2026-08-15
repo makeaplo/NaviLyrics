@@ -113,34 +113,35 @@ struct RootView: View {
     private var authenticatedContent: some View {
         ZStack {
             NavigationStack(path: $navigationPath) {
-                if let client = session.client {
-                    TabView(selection: $selectedTab) {
-                        ContentView()
-                            .tabItem {
-                                Label("音乐库", systemImage: "music.note.list")
+                VStack(spacing: 0) {
+                    Group {
+                        if let client = session.client {
+                            switch selectedTab {
+                            case .library:
+                                ContentView()
+                            case .forYou:
+                                ForYouView()
+                            case .favorites:
+                                FavoritesView(client: client)
+                            case .playlists:
+                                PlaylistsView(client: client)
                             }
-                            .tag(MainTab.library)
-
-                        ForYouView()
-                            .tabItem {
-                                Label("为你", systemImage: "sparkles")
-                            }
-                            .tag(MainTab.forYou)
-
-                        FavoritesView(client: client)
-                            .tabItem {
-                                Label("收藏", systemImage: "heart")
-                            }
-                            .tag(MainTab.favorites)
-
-                        PlaylistsView(client: client)
-                            .tabItem {
-                                Label("歌单", systemImage: "rectangle.stack")
-                            }
-                            .tag(MainTab.playlists)
+                        } else {
+                            ProgressView("正在连接音乐库…")
+                        }
                     }
-                } else {
-                    ProgressView("正在连接音乐库…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                    if !isPlayerPresented,
+                       player.currentSong != nil {
+                        MiniPlayerBar(namespace: playerNamespace) {
+                            withAnimation(playerPresentationAnimation(for: true)) {
+                                isPlayerPresented = true
+                            }
+                        }
+                    }
+
+                    MainTabBar(selection: $selectedTab)
                 }
             }
             .navigationDestination(for: SubsonicAlbum.self) { album in
@@ -212,16 +213,6 @@ struct RootView: View {
                 }
             )
         )
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if !isPlayerPresented,
-               player.currentSong != nil {
-                MiniPlayerBar(namespace: playerNamespace) {
-                    withAnimation(playerPresentationAnimation(for: true)) {
-                        isPlayerPresented = true
-                    }
-                }
-            }
-        }
     }
 
     private var statusAnimation: Animation? {
@@ -246,6 +237,66 @@ struct RootView: View {
             insertion: .move(edge: .bottom).combined(with: .opacity),
             removal: .move(edge: .bottom).combined(with: .opacity)
         )
+    }
+}
+
+private struct MainTabBar: View {
+    @Binding var selection: MainTab
+
+    var body: some View {
+        HStack(spacing: 0) {
+            tabButton(
+                .library,
+                title: "音乐库",
+                systemImage: "music.note.list"
+            )
+            tabButton(
+                .forYou,
+                title: "为你",
+                systemImage: "sparkles"
+            )
+            tabButton(
+                .favorites,
+                title: "收藏",
+                systemImage: "heart"
+            )
+            tabButton(
+                .playlists,
+                title: "歌单",
+                systemImage: "rectangle.stack"
+            )
+        }
+        .padding(.top, 6)
+        .padding(.bottom, 6)
+        .background(.bar)
+        .overlay(alignment: .top) {
+            Divider()
+        }
+    }
+
+    private func tabButton(
+        _ tab: MainTab,
+        title: String,
+        systemImage: String
+    ) -> some View {
+        Button {
+            selection = tab
+        } label: {
+            VStack(spacing: 3) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 19, weight: .semibold))
+                Text(title)
+                    .font(.caption2.weight(.medium))
+            }
+            .frame(maxWidth: .infinity)
+            .foregroundStyle(
+                selection == tab ? Color.accentColor : Color.secondary
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(selection == tab ? .isSelected : [])
     }
 }
 
