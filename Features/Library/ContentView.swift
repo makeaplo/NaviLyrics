@@ -5,6 +5,7 @@ struct ContentView: View {
     @Environment(NavidromeSession.self) private var session
     @Environment(PlayerStore.self) private var player
     @Environment(ListeningHistoryStore.self) private var history
+    @Environment(PlaybackBehaviorStore.self) private var behavior
     @Environment(FavoritesStore.self) private var favorites
     @Environment(\.playerPresentation) private var playerPresentation
     @State private var showSettings = false
@@ -15,6 +16,12 @@ struct ContentView: View {
     @State private var activeSearchQuery = ""
     @State private var searchRevision = 0
     @State private var searchScope: LibrarySearchScope = .all
+    @State private var recommendations: [PersonalizedRecommendation] = []
+    @State private var recommendationLibrarySongs: [SubsonicSong] = []
+    @State private var recommendationLibrarySignature = ""
+    @State private var isLoadingRecommendations = false
+    @State private var recommendationErrorMessage: String?
+    @State private var recommendationReloadRevision = 0
 
     var body: some View {
         Group {
@@ -22,6 +29,9 @@ struct ContentView: View {
                 libraryContent(client: client)
                     .task(id: searchRequest) {
                         await searchIfNeeded(using: client)
+                    }
+                    .task(id: recommendationRequest) {
+                        await loadRecommendations(using: client)
                     }
                     .task(id: favorites.activeServerURL) {
                         guard !favorites.activeServerURL.isEmpty else {
@@ -88,6 +98,9 @@ struct ContentView: View {
                 items: mostPlayedItems,
                 client: client
             )
+            if shouldShowRecommendations {
+                recommendationsSection(client: client)
+            }
             favoritesSection(client: client)
             playlistsSection(client: client)
             libraryBrowseSection
@@ -139,7 +152,164 @@ struct ContentView: View {
         .refreshable {
             await session.refreshLibrary()
             await favorites.refresh(using: client)
+            await loadRecommendations(using: client, force: true)
         }
+    }
+
+    @ViewBuilder
+    private func recommendationsSection(client: SubsonicClient) -> some View {
+        Section {
+            if isLoadingRecommendations {
+                HStack {
+                    Spacer()
+                    ProgressView("正在分析你的音乐偏好…")
+                    Spacer()
+                }
+                .listRowBackground(Color.clear)
+            } else if let recommendationErrorMessage {
+                HStack(spacing: 10) {
+                    Label(
+                        recommendationErrorMessage,
+                        systemImage: "wifi.exclamationmark"
+                    )
+                    Spacer(minLength: 8)
+                    Button("重试") {
+                        recommendationReloadRevision &+= 1
+                    }
+                    .font(.footnote.weight(.semibold))
+                }
+                .font(.footnote)
+            } else if recommendations.isEmpty {
+                Text("播放几首歌或收藏歌曲后，这里会出现只属于你的推荐。")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .listRowBackground(Color.clear)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 14) {
+                        ForEach(recommendations) { recommendation in
+                            RecommendationCard(
+                                recommendation: recommendation,
+                                artworkURL: client.coverURL(
+                                    coverArt: recommendation.song.coverArt,
+                                    size: 400
+                                )
+                            ) {
+                                playRecommendation(
+                                    recommendation,
+                                    using: client
+                                )
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 6)
+                }
+                .scrollClipDisabled()
+                .listRowInsets(EdgeInsets())
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+            }
+        } header: {
+            HStack {
+                Text("为你推荐")
+                Spacer()
+                Button("刷新") {
+                    recommendationReloadRevision &+= 1
+                }
+                .font(.caption.weight(.semibold))
+                .disabled(isLoadingRecommendations)
+            }
+        } footer: {
+            if !recommendations.isEmpty {
+                Text("推荐只使用本机播放和收藏记录，不会上传到 Navidrome。")
+            }
+        }
+    }
+
+    private var shouldShowRecommendations: Bool {
+        !recommendations.isEmpty
+            || isLoadingRecommendations
+            || recommendationErrorMessage != nil
+            || !behavior.items.isEmpty
+            || !favorites.songs.isEmpty
+    }
+
+    private var recommendationRequest: String {
+        let albumSignature = session.albums.map(\.id).joined(separator: ",")
+        let behaviorSignature = behavior.items.map { item in
+            [
+                item.id,
+                "\(item.playCount)",
+                "\(item.completionCount)",
+                "\(item.skipCount)",
+                "\(item.lastPlayedAt?.timeIntervalSince1970 ?? 0)",
+            ].joined(separator: ":")
+        }.joined(separator: "|")
+        let favoriteSignature = favorites.songs.map(\.id).joined(separator: ",")
+        return [
+            session.activeLibraryIdentifier,
+            albumSignature,
+            behaviorSignature,
+            favoriteSignature,
+            player.currentSong?.id ?? "",
+            "\(recommendationReloadRevision)",
+        ].joined(separator: "||")
+    }
+
+    private func loadRecommendations(
+        using client: SubsonicClient,
+        force: Bool = false
+    ) async {
+        let librarySignature = session.albums.map(\.id).joined(separator: ",")
+        if force || recommendationLibrarySignature != librarySignature {
+            recommendationLibrarySignature = librarySignature
+            recommendationLibrarySongs = []
+        }
+
+        let hasPersonalSignal = !favorites.songs.isEmpty
+            || behavior.items.contains(where: \.hasPositiveSignal)
+        guard hasPersonalSignal else {
+            recommendations = []
+            recommendationErrorMessage = nil
+            isLoadingRecommendations = false
+            return
+        }
+
+        if recommendationLibrarySongs.isEmpty, !session.albums.isEmpty {
+            isLoadingRecommendations = true
+            recommendationErrorMessage = nil
+            do {
+                recommendationLibrarySongs = try await client.librarySongs(
+                    from: session.albums
+                )
+            } catch is CancellationError {
+                return
+            } catch {
+                recommendationErrorMessage =
+                    "推荐加载失败：\(error.localizedDescription)"
+                isLoadingRecommendations = false
+                return
+            }
+        }
+
+        recommendations = PersonalizedRecommendationEngine.recommend(
+            songs: recommendationLibrarySongs,
+            behavior: behavior.items,
+            favorites: favorites.songs,
+            excludedSongIDs: player.currentSong.map { Set([$0.id]) } ?? [],
+            limit: 8
+        )
+        recommendationErrorMessage = nil
+        isLoadingRecommendations = false
+    }
+
+    private func playRecommendation(
+        _ recommendation: PersonalizedRecommendation,
+        using client: SubsonicClient
+    ) {
+        player.load(song: client.makeNowPlayingSong(from: recommendation.song))
+        playerPresentation.wrappedValue = true
     }
 
     private func favoritesSection(client: SubsonicClient) -> some View {
@@ -744,6 +914,45 @@ private struct ListeningHistoryRow: View {
         [item.artist, item.album]
             .filter { !$0.isEmpty }
             .joined(separator: " · ")
+    }
+}
+
+private struct RecommendationCard: View {
+    let recommendation: PersonalizedRecommendation
+    let artworkURL: URL?
+    let onPlay: () -> Void
+
+    var body: some View {
+        Button(action: onPlay) {
+            VStack(alignment: .leading, spacing: 8) {
+                LibraryArtwork(url: artworkURL, size: 148)
+
+                Text(recommendation.song.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+
+                Text(
+                    recommendation.song.artist.isEmpty
+                        ? "未知艺术家"
+                        : recommendation.song.artist
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+
+                Text(recommendation.reason.title)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(2)
+                    .frame(minHeight: 28, alignment: .top)
+            }
+            .frame(width: 148, alignment: .leading)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("播放这首推荐歌曲")
     }
 }
 
