@@ -366,7 +366,27 @@ private struct LyricsLoadRequest: Hashable {
 
 private struct PlayerQueueView: View {
     @Environment(PlayerStore.self) private var player
+    @Environment(NavidromeSession.self) private var session
     @Environment(\.dismiss) private var dismiss
+    @State private var showSaveQueue = false
+
+    private var currentIndex: Int? {
+        guard let queueIndex = player.queueIndex,
+              player.queue.indices.contains(queueIndex) else {
+            return nil
+        }
+        return queueIndex
+    }
+
+    private var previousIndices: [Int] {
+        guard let currentIndex else { return [] }
+        return Array(0..<currentIndex)
+    }
+
+    private var upcomingIndices: [Int] {
+        guard let currentIndex else { return [] }
+        return Array((currentIndex + 1)..<player.queue.count)
+    }
 
     var body: some View {
         NavigationStack {
@@ -378,41 +398,62 @@ private struct PlayerQueueView: View {
                     )
                 } else {
                     List {
-                        ForEach(player.queue.indices, id: \.self) { index in
-                            let song = player.queue[index]
-                            Button {
-                                player.playQueueItem(at: index)
-                                dismiss()
-                            } label: {
-                                HStack(spacing: 12) {
-                                    if player.queueIndex == index {
-                                        Image(systemName: "speaker.wave.2.fill")
-                                            .foregroundStyle(Color.accentColor)
-                                            .frame(width: 22)
-                                    } else {
-                                        Text("\(index + 1)")
-                                            .font(.caption.monospacedDigit())
-                                            .foregroundStyle(.secondary)
-                                            .frame(width: 22)
+                        if let currentIndex {
+                            Section("正在播放") {
+                                queueRow(at: currentIndex)
+                                    .moveDisabled(true)
+                                    .deleteDisabled(true)
+                            }
+
+                            if !upcomingIndices.isEmpty {
+                                Section("接下来 · \(upcomingIndices.count)") {
+                                    ForEach(upcomingIndices, id: \.self) { index in
+                                        queueRow(at: index)
                                     }
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(song.title)
-                                            .foregroundStyle(.primary)
-                                            .lineLimit(1)
-                                        Text(song.artist)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
+                                    .onDelete {
+                                        removeItems(
+                                            from: upcomingIndices,
+                                            at: $0
+                                        )
+                                    }
+                                    .onMove {
+                                        moveItems(
+                                            in: upcomingIndices,
+                                            from: $0,
+                                            to: $1
+                                        )
                                     }
                                 }
-                                .contentShape(.rect)
                             }
-                            .buttonStyle(.plain)
-                            .moveDisabled(player.queueIndex == index)
-                            .deleteDisabled(player.queueIndex == index)
+
+                            if !previousIndices.isEmpty {
+                                Section("已播放 · \(previousIndices.count)") {
+                                    ForEach(previousIndices, id: \.self) { index in
+                                        queueRow(at: index)
+                                    }
+                                    .onDelete {
+                                        removeItems(
+                                            from: previousIndices,
+                                            at: $0
+                                        )
+                                    }
+                                    .onMove {
+                                        moveItems(
+                                            in: previousIndices,
+                                            from: $0,
+                                            to: $1
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            Section("播放队列") {
+                                ForEach(player.queue.indices, id: \.self) {
+                                    index in
+                                    queueRow(at: index)
+                                }
+                            }
                         }
-                        .onDelete(perform: player.removeQueueItems)
-                        .onMove(perform: player.moveQueueItem)
                     }
                 }
             }
@@ -425,6 +466,14 @@ private struct PlayerQueueView: View {
                     }
                     .disabled(!player.canClearUpcomingQueue)
                 }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        showSaveQueue = true
+                    } label: {
+                        Label("保存为歌单", systemImage: "plus.square.on.square")
+                    }
+                    .disabled(player.queue.isEmpty || session.client == nil)
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     EditButton()
                 }
@@ -432,6 +481,167 @@ private struct PlayerQueueView: View {
                     Button("完成") { dismiss() }
                 }
             }
+        }
+        .sheet(isPresented: $showSaveQueue) {
+            if let client = session.client {
+                SaveQueueAsPlaylistView(
+                    client: client,
+                    songIDs: player.queue.map(\.id)
+                )
+            }
+        }
+    }
+
+    private func queueRow(at index: Int) -> some View {
+        let song = player.queue[index]
+        return Button {
+            player.playQueueItem(at: index)
+            dismiss()
+        } label: {
+            HStack(spacing: 12) {
+                if player.queueIndex == index {
+                    Image(systemName: "speaker.wave.2.fill")
+                        .foregroundStyle(Color.accentColor)
+                        .frame(width: 22)
+                } else {
+                    Text("\(index + 1)")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(width: 22)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(song.title)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(song.artist)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                Text(timeString(song.duration))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.tertiary)
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .moveDisabled(player.queueIndex == index)
+        .deleteDisabled(player.queueIndex == index)
+    }
+
+    private func removeItems(from indices: [Int], at offsets: IndexSet) {
+        let globalOffsets = offsets.compactMap { offset in
+            indices.indices.contains(offset) ? indices[offset] : nil
+        }
+        player.removeQueueItems(at: IndexSet(globalOffsets))
+    }
+
+    private func moveItems(
+        in indices: [Int],
+        from offsets: IndexSet,
+        to destination: Int
+    ) {
+        guard let sourceOffset = offsets.first,
+              indices.indices.contains(sourceOffset) else {
+            return
+        }
+        let source = indices[sourceOffset]
+        let globalDestination = destination >= indices.count
+            ? player.queue.count
+            : indices[destination]
+        player.moveQueueItem(
+            from: IndexSet(integer: source),
+            to: globalDestination
+        )
+    }
+
+    private func timeString(_ time: TimeInterval) -> String {
+        guard time.isFinite, time > 0 else { return "--:--" }
+        return String(format: "%d:%02d", Int(time) / 60, Int(time) % 60)
+    }
+}
+
+private struct SaveQueueAsPlaylistView: View {
+    let client: SubsonicClient
+    let songIDs: [String]
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+
+    private var canSave: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !isSaving
+            && !songIDs.isEmpty
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("歌单名称", text: $name)
+                        .textInputAutocapitalization(.never)
+                } footer: {
+                    Text("将保存当前队列中的 \(songIDs.count) 首歌曲。")
+                }
+            }
+            .navigationTitle("保存为歌单")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("保存") { Task { await save() } }
+                        .disabled(!canSave)
+                }
+            }
+            .overlay {
+                if isSaving {
+                    ProgressView()
+                        .padding(12)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                }
+            }
+            .alert(
+                "保存失败",
+                isPresented: Binding(
+                    get: { errorMessage != nil },
+                    set: { isPresented in
+                        if !isPresented { errorMessage = nil }
+                    }
+                )
+            ) {
+                Button("好", role: .cancel) { errorMessage = nil }
+            } message: {
+                Text(errorMessage ?? "请稍后重试。")
+            }
+        }
+        .presentationDetents([.medium])
+    }
+
+    private func save() async {
+        let trimmedName = name.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard !trimmedName.isEmpty, !songIDs.isEmpty, !isSaving else {
+            return
+        }
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            try await client.createPlaylist(
+                name: trimmedName,
+                songIDs: songIDs
+            )
+            try Task.checkCancellation()
+            dismiss()
+        } catch is CancellationError {
+            return
+        } catch {
+            errorMessage = "保存失败：\(error.localizedDescription)"
         }
     }
 }
