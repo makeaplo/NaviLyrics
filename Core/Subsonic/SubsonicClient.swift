@@ -496,6 +496,20 @@ struct SubsonicClient {
         return songs.map(makeSong(from:))
     }
 
+    /// Loads the songs needed by local recommendation scoring.
+    func librarySongs(from albums: [SubsonicAlbum]) async throws -> [SubsonicSong] {
+        if let demoState { return demoState.allSongs }
+
+        var songsByID: [String: SubsonicSong] = [:]
+        for album in albums {
+            try Task.checkCancellation()
+            for song in try await songs(inAlbum: album.id) {
+                songsByID[song.id] = song
+            }
+        }
+        return Array(songsByID.values)
+    }
+
     /// 歌手详情及其专辑。
     func albums(byArtist artistID: String) async throws -> [SubsonicAlbum] {
         if let demoState {
