@@ -13,6 +13,7 @@ struct ContentView: View {
     @State private var searchErrorMessage: String?
     @State private var activeSearchQuery = ""
     @State private var searchRevision = 0
+    @State private var searchScope: LibrarySearchScope = .all
 
     var body: some View {
         Group {
@@ -295,7 +296,9 @@ struct ContentView: View {
 
     private func searchResultList(client: SubsonicClient) -> some View {
         List {
-            if isSearching && searchResults.isEmpty {
+            searchScopeBar
+
+            if isSearching && !hasVisibleSearchResults {
                 HStack {
                     Spacer()
                     ProgressView("正在搜索…")
@@ -313,69 +316,136 @@ struct ContentView: View {
                     }
                 }
                 .listRowBackground(Color.clear)
-            } else if searchResults.isEmpty {
-                ContentUnavailableView.search(text: normalizedSearchQuery)
-                    .listRowBackground(Color.clear)
+            } else if !hasVisibleSearchResults {
+                ContentUnavailableView {
+                    Label(
+                        "没有\(searchScope.title)结果",
+                        systemImage: "magnifyingglass"
+                    )
+                } description: {
+                    Text("可以切换类型或修改搜索词")
+                }
+                .listRowBackground(Color.clear)
             } else {
-                if !searchResults.songs.isEmpty {
-                    Section("歌曲 · \(searchResults.songs.count)") {
-                        ForEach(searchResults.songs.indices, id: \.self) { index in
-                            let song = searchResults.songs[index]
-                            LibrarySongRow(
-                                song: song,
-                                artworkURL: client.coverURL(
-                                    coverArt: song.coverArt,
-                                    size: 180
-                                ),
-                                isFavorite: favorites.isFavorite(
-                                    songID: song.id,
-                                    fallback: song.isStarred
-                                ),
-                                isFavoriteUpdating: favorites.isUpdating(
-                                    songID: song.id
-                                ),
-                                onPlay: {
-                                    playSearchResult(
-                                        at: index,
-                                        using: client
-                                    )
-                                },
-                                onToggleFavorite: {
-                                    toggleFavorite(song, using: client)
-                                }
+                searchSections(client: client)
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: isSearching)
+    }
+
+    private var searchScopeBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(LibrarySearchScope.allCases) { scope in
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            searchScope = scope
+                        }
+                    } label: {
+                        Text("\(scope.title) \(scopeCount(for: scope))")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(
+                                searchScope == scope
+                                    ? Color.white
+                                    : Color.primary
                             )
-                        }
+                            .padding(.horizontal, 12)
+                            .frame(minHeight: 32)
+                            .background(
+                                searchScope == scope
+                                    ? Color.accentColor
+                                    : Color.secondary.opacity(0.12),
+                                in: Capsule()
+                            )
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(
+                        "筛选\(scope.title)，\(scopeCount(for: scope))项"
+                    )
+                    .accessibilityAddTraits(
+                        searchScope == scope ? .isSelected : []
+                    )
                 }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+        }
+        .listRowInsets(EdgeInsets())
+        .listRowSeparator(.hidden)
+        .listRowBackground(Color.clear)
+    }
 
-                if !searchResults.albums.isEmpty {
-                    Section("专辑 · \(searchResults.albums.count)") {
-                        ForEach(searchResults.albums) { album in
-                            NavigationLink(value: album) {
-                                AlbumRow(
-                                    album: album,
-                                    artworkURL: client.coverURL(
-                                        coverArt: album.coverArt,
-                                        size: 180
-                                    )
-                                )
-                            }
+    @ViewBuilder
+    private func searchSections(client: SubsonicClient) -> some View {
+        if searchScope.showsSongs, !searchResults.songs.isEmpty {
+            Section("歌曲 · \(searchResults.songs.count)") {
+                ForEach(searchResults.songs.indices, id: \.self) { index in
+                    let song = searchResults.songs[index]
+                    LibrarySongRow(
+                        song: song,
+                        artworkURL: client.coverURL(
+                            coverArt: song.coverArt,
+                            size: 180
+                        ),
+                        isFavorite: favorites.isFavorite(
+                            songID: song.id,
+                            fallback: song.isStarred
+                        ),
+                        isFavoriteUpdating: favorites.isUpdating(
+                            songID: song.id
+                        ),
+                        onPlay: {
+                            playSearchResult(at: index, using: client)
+                        },
+                        onToggleFavorite: {
+                            toggleFavorite(song, using: client)
                         }
-                    }
+                    )
                 }
+            }
+        }
 
-                if !searchResults.artists.isEmpty {
-                    Section("艺人 · \(searchResults.artists.count)") {
-                        ForEach(searchResults.artists) { artist in
-                            NavigationLink(value: artist) {
-                                ArtistRow(artist: artist)
-                            }
-                        }
+        if searchScope.showsAlbums, !searchResults.albums.isEmpty {
+            Section("专辑 · \(searchResults.albums.count)") {
+                ForEach(searchResults.albums) { album in
+                    NavigationLink(value: album) {
+                        AlbumRow(
+                            album: album,
+                            artworkURL: client.coverURL(
+                                coverArt: album.coverArt,
+                                size: 180
+                            )
+                        )
                     }
                 }
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: isSearching)
+
+        if searchScope.showsArtists, !searchResults.artists.isEmpty {
+            Section("艺术家 · \(searchResults.artists.count)") {
+                ForEach(searchResults.artists) { artist in
+                    NavigationLink(value: artist) {
+                        ArtistRow(artist: artist)
+                    }
+                }
+            }
+        }
+
+        if searchScope.showsPlaylists, !searchResults.playlists.isEmpty {
+            Section("歌单 · \(searchResults.playlists.count)") {
+                ForEach(searchResults.playlists) { playlist in
+                    NavigationLink(value: playlist) {
+                        PlaylistRow(
+                            playlist: playlist,
+                            artworkURL: client.coverURL(
+                                coverArt: playlist.coverArt,
+                                size: 180
+                            )
+                        )
+                    }
+                }
+            }
+        }
     }
 
     private func libraryErrorBanner(message: String) -> some View {
@@ -414,6 +484,28 @@ struct ContentView: View {
         )
     }
 
+    private var hasVisibleSearchResults: Bool {
+        scopeCount(for: searchScope) > 0
+    }
+
+    private func scopeCount(for scope: LibrarySearchScope) -> Int {
+        switch scope {
+        case .all:
+            searchResults.songs.count
+                + searchResults.albums.count
+                + searchResults.artists.count
+                + searchResults.playlists.count
+        case .songs:
+            searchResults.songs.count
+        case .albums:
+            searchResults.albums.count
+        case .artists:
+            searchResults.artists.count
+        case .playlists:
+            searchResults.playlists.count
+        }
+    }
+
     private func searchIfNeeded(using client: SubsonicClient) async {
         let query = normalizedSearchQuery
         guard !query.isEmpty else {
@@ -421,6 +513,7 @@ struct ContentView: View {
             searchResults = SubsonicSearchResults()
             searchErrorMessage = nil
             isSearching = false
+            searchScope = .all
             return
         }
 
@@ -477,6 +570,36 @@ struct ContentView: View {
             _ = await favorites.toggle(song: song, using: client)
         }
     }
+}
+
+private enum LibrarySearchScope: String, CaseIterable, Hashable, Identifiable {
+    case all
+    case songs
+    case albums
+    case artists
+    case playlists
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all:
+            "全部"
+        case .songs:
+            "歌曲"
+        case .albums:
+            "专辑"
+        case .artists:
+            "艺术家"
+        case .playlists:
+            "歌单"
+        }
+    }
+
+    var showsSongs: Bool { self == .all || self == .songs }
+    var showsAlbums: Bool { self == .all || self == .albums }
+    var showsArtists: Bool { self == .all || self == .artists }
+    var showsPlaylists: Bool { self == .all || self == .playlists }
 }
 
 enum ListeningHistoryListKind: Hashable {

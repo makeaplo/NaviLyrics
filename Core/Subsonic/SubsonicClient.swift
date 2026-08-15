@@ -39,19 +39,25 @@ struct SubsonicSearchResults {
     let songs: [SubsonicSong]
     let albums: [SubsonicAlbum]
     let artists: [SubsonicArtist]
+    let playlists: [SubsonicPlaylist]
 
     init(
         songs: [SubsonicSong] = [],
         albums: [SubsonicAlbum] = [],
-        artists: [SubsonicArtist] = []
+        artists: [SubsonicArtist] = [],
+        playlists: [SubsonicPlaylist] = []
     ) {
         self.songs = songs
         self.albums = albums
         self.artists = artists
+        self.playlists = playlists
     }
 
     var isEmpty: Bool {
-        songs.isEmpty && albums.isEmpty && artists.isEmpty
+        songs.isEmpty
+            && albums.isEmpty
+            && artists.isEmpty
+            && playlists.isEmpty
     }
 }
 
@@ -524,6 +530,9 @@ struct SubsonicClient {
                 },
                 artists: demoState.artists.filter {
                     $0.name.lowercased().contains(normalizedQuery)
+                },
+                playlists: demoState.playlists.filter {
+                    $0.name.lowercased().contains(normalizedQuery)
                 }
             )
         }
@@ -537,6 +546,14 @@ struct SubsonicClient {
             ]
         )
         let result = resp.searchResult3
+        let matchingPlaylists: [SubsonicPlaylist]
+        do {
+            matchingPlaylists = try await playlists().filter {
+                $0.name.localizedCaseInsensitiveContains(query)
+            }
+        } catch {
+            matchingPlaylists = []
+        }
         return SubsonicSearchResults(
             songs: (result?.song ?? []).map(makeSong(from:)),
             albums: (result?.album ?? []).map(makeAlbum(from:)),
@@ -546,7 +563,8 @@ struct SubsonicClient {
                     name: artist.name,
                     albumCount: max(artist.albumCount ?? 0, 0)
                 )
-            }
+            },
+            playlists: matchingPlaylists
         )
     }
 

@@ -723,7 +723,7 @@ private struct SongPickerRow: View {
     }
 }
 
-private struct PlaylistRow: View {
+struct PlaylistRow: View {
     let playlist: SubsonicPlaylist
     let artworkURL: URL?
 
