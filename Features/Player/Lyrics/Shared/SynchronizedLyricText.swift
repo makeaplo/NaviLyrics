@@ -85,7 +85,7 @@ struct SynchronizedLyricText: View {
         fontWeight: LyricsFontWeight = .bold,
         alignment: SynchronizedLyricTextAlignment = .leading,
         fontScale: CGFloat = 1,
-        primaryColor: Color = .white,
+        primaryColor: Color = .primary,
         showsTranslation: Bool = true,
         showsRomanization: Bool = true,
         includesTranslation: Bool = true,
@@ -236,7 +236,7 @@ struct SynchronizedLyricText: View {
                     style: .continuous
                 )
                 .fill(
-                    .white.opacity(
+                    primaryColor.opacity(
                         min(
                             max(interactionBackgroundOpacity, 0),
                             1
@@ -304,7 +304,7 @@ struct SynchronizedLyricText: View {
                     weight: fontWeight.swiftUIWeight
                 )
             )
-            .foregroundStyle(.white.opacity(opacity))
+            .foregroundStyle(primaryColor.opacity(opacity))
             .lineLimit(nil)
             .fixedSize(horizontal: false, vertical: true)
             .frame(

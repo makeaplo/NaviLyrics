@@ -5,6 +5,7 @@ struct PlayerView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(PlayerStore.self) private var player
     @Environment(NavidromeSession.self) private var session
+    @Environment(\.colorScheme) private var colorScheme
     @State private var lyricsStore: NaviLyricsStore?
     @State private var currentTime: TimeInterval = 0
     @State private var highlightedLyricID: LyricLine.ID?
@@ -50,7 +51,6 @@ struct PlayerView: View {
                 highlightedLyricID = nil
             }
         }
-        .preferredColorScheme(.dark)
         .environment(
             \.effectiveLyricsRefreshRate,
             settings.lyricsHighFrameRateEnabled ? .standard : .efficient
@@ -111,7 +111,7 @@ struct PlayerView: View {
 
     private var playerBackground: some View {
         ZStack {
-            Color.black
+            backgroundBaseColor
             if let artworkURL = player.currentSong?.artworkURL {
                 if artworkURL.scheme == "navi-demo" {
                     DemoArtworkView(
@@ -119,7 +119,7 @@ struct PlayerView: View {
                     )
                     .blur(radius: 72)
                     .scaleEffect(1.25)
-                    .opacity(0.42)
+                    .opacity(artworkOpacity)
                 } else {
                     AsyncImage(url: artworkURL) { phase in
                         if case let .success(image) = phase {
@@ -128,23 +128,44 @@ struct PlayerView: View {
                                 .scaledToFill()
                                 .blur(radius: 72)
                                 .scaleEffect(1.25)
-                                .opacity(0.42)
+                                .opacity(artworkOpacity)
                         }
                     }
                 }
             }
             LinearGradient(
-                colors: [
-                    .black.opacity(0.22),
-                    .black.opacity(0.62),
-                    .black.opacity(0.92),
-                ],
+                colors: backgroundGradientColors,
                 startPoint: .top,
                 endPoint: .bottom
             )
         }
         .ignoresSafeArea()
         .clipped()
+    }
+
+    private var backgroundBaseColor: Color {
+        colorScheme == .dark
+            ? .black
+            : Color(uiColor: .systemBackground)
+    }
+
+    private var artworkOpacity: Double {
+        colorScheme == .dark ? 0.42 : 0.16
+    }
+
+    private var backgroundGradientColors: [Color] {
+        if colorScheme == .dark {
+            return [
+                .black.opacity(0.22),
+                .black.opacity(0.62),
+                .black.opacity(0.92),
+            ]
+        }
+        return [
+            Color(uiColor: .systemBackground).opacity(0.12),
+            Color(uiColor: .systemBackground).opacity(0.54),
+            Color(uiColor: .systemBackground).opacity(0.9),
+        ]
     }
 
     // MARK: 歌词区
@@ -217,7 +238,7 @@ struct PlayerView: View {
                 in: 0...max(player.duration, 1),
                 onEditingChanged: handleScrubbing
             )
-            .tint(.white)
+            .tint(colorScheme == .dark ? .white : .accentColor)
             .disabled(player.currentSong == nil || player.duration <= 0)
             .accessibilityLabel("播放进度")
             .accessibilityValue(timeString(displayedTime))
@@ -228,7 +249,11 @@ struct PlayerView: View {
                 Text("−\(timeString(max(player.duration - displayedTime, 0)))")
             }
             .font(.caption2.monospacedDigit())
-            .foregroundStyle(.white.opacity(0.68))
+            .foregroundStyle(
+                colorScheme == .dark
+                    ? Color.white.opacity(0.68)
+                    : Color.secondary
+            )
 
             HStack(spacing: 44) {
                 Button {
@@ -253,10 +278,18 @@ struct PlayerView: View {
                         .font(.system(size: 58))
                         if player.isBuffering {
                             Circle()
-                                .fill(.black.opacity(0.48))
+                                .fill(
+                                    colorScheme == .dark
+                                        ? Color.black.opacity(0.48)
+                                        : Color.white.opacity(0.72)
+                                )
                                 .frame(width: 44, height: 44)
                             ProgressView()
-                                .tint(.white)
+                                .tint(
+                                    colorScheme == .dark
+                                        ? .white
+                                        : .accentColor
+                                )
                         }
                     }
                 }

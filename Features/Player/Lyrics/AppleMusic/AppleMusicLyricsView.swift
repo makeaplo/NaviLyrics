@@ -12,6 +12,7 @@ struct AppleMusicLyricsView: View {
     nonisolated private static let expandedBottomDistanceScale: CGFloat = 0.68
 
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(PlayerStore.self) private var player
     @Environment(AppSettings.self) private var settings
 
@@ -150,6 +151,10 @@ struct AppleMusicLyricsView: View {
             }
     }
 
+    private var lyricsPrimaryColor: Color {
+        colorScheme == .dark ? .white : .primary
+    }
+
     private func synchronizeInterfaceVisibility() {
         var transaction = Transaction(animation: nil)
         transaction.disablesAnimations = true
@@ -167,7 +172,7 @@ struct AppleMusicLyricsView: View {
                     systemImage: "quote.bubble",
                     description: Text(errorMessage)
                 )
-                .foregroundStyle(.white)
+                .foregroundStyle(lyricsPrimaryColor)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(.rect)
                 .onTapGesture {
@@ -175,8 +180,8 @@ struct AppleMusicLyricsView: View {
                 }
             } else {
                 ProgressView("正在载入歌词")
-                    .tint(.white)
-                    .foregroundStyle(.white)
+                    .tint(lyricsPrimaryColor)
+                    .foregroundStyle(lyricsPrimaryColor)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .contentShape(.rect)
                     .onTapGesture {
@@ -387,6 +392,7 @@ struct AppleMusicLyricsView: View {
                                                 romanizationFontSize,
                                             fontWeight:
                                                 settings.lyricsFontWeight,
+                                            primaryColor: lyricsPrimaryColor,
                                             showsTranslation:
                                                 showsLyricTranslation(
                                                     isFocusedLine:
@@ -882,6 +888,7 @@ struct AppleMusicLyricsView: View {
                                 romanizationFontSize:
                                     lyricRomanizationFontSize,
                                 fontWeight: settings.lyricsFontWeight,
+                                primaryColor: lyricsPrimaryColor,
                                 showsTranslation:
                                     showsLyricTranslation(
                                         isFocusedLine:

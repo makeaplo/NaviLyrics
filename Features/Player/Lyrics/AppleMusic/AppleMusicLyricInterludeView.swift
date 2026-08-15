@@ -160,6 +160,7 @@ struct AppleMusicLyricsFocusCoordinator: View {
 struct AppleMusicLyricInterludeView: View {
     @Environment(\.accessibilityReduceMotion)
     private var accessibilityReduceMotion
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.effectiveLyricsRefreshRate)
     private var effectiveLyricsRefreshRate
     @Environment(PlayerStore.self) private var player
@@ -168,6 +169,10 @@ struct AppleMusicLyricInterludeView: View {
     let advanceTime: TimeInterval
     let fontSize: CGFloat
     let onInterfaceInteraction: (() -> Void)?
+
+    private var interludeColor: Color {
+        colorScheme == .dark ? .white : .primary
+    }
 
     var body: some View {
         Group {
@@ -224,7 +229,7 @@ struct AppleMusicLyricInterludeView: View {
                 index in
                 Circle()
                     .fill(
-                        .white.opacity(
+                        interludeColor.opacity(
                             presentation.dotOpacities[index]
                         )
                     )
