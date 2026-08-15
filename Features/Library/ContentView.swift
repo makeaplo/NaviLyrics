@@ -88,6 +88,7 @@ struct ContentView: View {
             )
             favoritesSection(client: client)
             playlistsSection(client: client)
+            libraryBrowseSection
 
             if session.albums.isEmpty {
                 ContentUnavailableView(
@@ -156,6 +157,17 @@ struct ContentView: View {
         Section("播放内容") {
             NavigationLink(value: LibraryRoute.playlists) {
                 Label("播放列表", systemImage: "music.note.list")
+            }
+        }
+    }
+
+    private var libraryBrowseSection: some View {
+        Section("浏览音乐库") {
+            NavigationLink(value: LibraryRoute.albums) {
+                Label("全部专辑", systemImage: "square.stack")
+            }
+            NavigationLink(value: LibraryRoute.artists) {
+                Label("全部艺术家", systemImage: "person.2")
             }
         }
     }
@@ -629,7 +641,7 @@ struct AlbumRow: View {
     }
 }
 
-private struct ArtistRow: View {
+struct ArtistRow: View {
     let artist: SubsonicArtist
 
     var body: some View {

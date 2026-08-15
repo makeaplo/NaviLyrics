@@ -342,6 +342,24 @@ struct SubsonicClient {
         }
     }
 
+    /// 艺人目录，按 Navidrome 返回的首字母索引展开。
+    func artists() async throws -> [SubsonicArtist] {
+        if let demoState { return demoState.artists }
+        let resp: SubsonicResponse = try await request(
+            "getArtists",
+            params: [:]
+        )
+        return resp.artists?.index?.flatMap { index in
+            (index.artist ?? []).map { artist in
+                SubsonicArtist(
+                    id: artist.id,
+                    name: artist.name,
+                    albumCount: max(artist.albumCount ?? 0, 0)
+                )
+            }
+        } ?? []
+    }
+
     /// 播放列表目录。
     func playlists() async throws -> [SubsonicPlaylist] {
         if let demoState { return demoState.playlists }
@@ -812,6 +830,7 @@ struct SubsonicResponse: Decodable {
     let version: String?
     let albumList2: AlbumList2?
     let album: AlbumDetail?
+    let artists: Artists?
     let artist: ArtistDetail?
     let playlists: Playlists?
     let playlist: PlaylistDetail?
@@ -843,6 +862,13 @@ struct AlbumDetail: Decodable {
 }
 struct ArtistDetail: Decodable {
     let album: [AlbumEntry]?
+}
+struct Artists: Decodable {
+    let index: [ArtistIndex]?
+}
+struct ArtistIndex: Decodable {
+    let name: String
+    let artist: [ArtistEntry]?
 }
 struct Playlists: Decodable {
     let playlist: [PlaylistEntry]?
