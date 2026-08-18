@@ -15,7 +15,7 @@ enum LyricRubyTextBuilder {
                     horizontalOffset: unit.originalOffset
                 )
             )
-            return Text("\(result)\(placedFragment)")
+            return result + placedFragment
         }
     }
 
@@ -35,7 +35,7 @@ enum LyricRubyTextBuilder {
                     horizontalOffset: unit.romanizationOffset
                 )
             )
-            return Text("\(result)\(placedFragment)")
+            return result + placedFragment
         }
     }
 
@@ -97,7 +97,7 @@ enum LyricRubyTextBuilder {
                         isWhitespace: character.isWhitespace
                     )
                 )
-            return Text("\(result)\(fragment)")
+            return result + fragment
         }
     }
 

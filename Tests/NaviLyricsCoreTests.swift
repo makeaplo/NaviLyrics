@@ -74,7 +74,7 @@ final class NaviLyricsCoreTests: XCTestCase {
         XCTAssertFalse(first?.absoluteString.contains("secret") ?? true)
     }
 
-    @MainActor
+    @MainActorx
     func testDemoClientProvidesLocalLibraryAndLyrics() async throws {
         let client = SubsonicClient.demo()
 

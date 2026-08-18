@@ -2,6 +2,8 @@
 
 NaviLyrics 是一个自用的 iOS Navidrome / OpenSubsonic 客户端，重点提供接近 Apple Music 的同步歌词体验。
 
+> 本文件只补充 Mac、Xcode、真机和 LiveContainer 操作。当前功能、已知问题和测试状态以根目录 [`README.md`](README.md) 与 [`docs/PROJECT-AUDIT-AND-IMPROVEMENT-SPEC.md`](docs/PROJECT-AUDIT-AND-IMPROVEMENT-SPEC.md) 为准。
+
 ## 当前可用功能
 
 - 连接局域网或公网 Navidrome 服务器
@@ -94,4 +96,6 @@ NaviLyrics 会优先调用 `getLyricsBySongId` 获取 OpenSubsonic 结构化歌�
 
 ## 测试
 
-工程包含 `NaviLyricsTests` 测试 target，覆盖重复时间戳歌词、歌词身份稳定性、播放时间线、鉴权 URL 和异常时长等核心回归场景。在安装了匹配 iOS Simulator runtime 的 Xcode 中可直接按 `Command-U` 运行。
+工程包含 `NaviLyricsTests` 测试 Target，测试源码覆盖部分歌词、历史、行为和推荐逻辑。
+
+截至 2026-08-18，测试 Target 存在已知编译问题，不能据此宣称测试通过；审计机器也缺少匹配的 iOS 26.5 Platform / Simulator Runtime。修复根 README 中记录的测试错误并安装匹配 Runtime 后，才可使用 `Command-U` 或 `xcodebuild test` 执行完整测试。

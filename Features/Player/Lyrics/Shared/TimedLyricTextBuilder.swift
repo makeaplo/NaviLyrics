@@ -86,7 +86,7 @@ enum TimedLyricTextBuilder {
             if lineBreakOffsets.contains(offset),
                offset > 0,
                !characters[offset - 1].isLineBreak {
-                text = Text("\(text)\(Text(verbatim: "\n"))")
+                text = text + Text(verbatim: "\n")
             }
 
             let character = entry.element
@@ -108,7 +108,7 @@ enum TimedLyricTextBuilder {
                     isWhitespace: character.isWhitespace
                 )
             )
-            return Text("\(text)\(fragment)")
+            return text + fragment
         }
     }
 
