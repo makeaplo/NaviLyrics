@@ -72,6 +72,15 @@ XCODEBUILD_BIN=/path/to/Xcode.app/Contents/Developer/usr/bin/xcodebuild \
   ./build_ios_unsigned.sh
 ```
 
+脚本会先自动选择一个可用的 iOS Simulator 并运行单元测试。也可以显式指定目标：
+
+```bash
+TEST_DESTINATION='platform=iOS Simulator,OS=26.5,name=iPhone 17' \
+  ./build_ios_unsigned.sh
+```
+
+如果没有与当前 Xcode 匹配的 Simulator Runtime，或任一测试失败，脚本会停止且不会生成新的 IPA。
+
 ### 导入到 LiveContainer
 
 `.ipa` 不能在 iPhone 的“文件”App 中直接运行；点开只显示分享菜单是正常现象。
@@ -98,4 +107,4 @@ NaviLyrics 会优先调用 `getLyricsBySongId` 获取 OpenSubsonic 结构化歌�
 
 工程包含 `NaviLyricsTests` 测试 Target，测试源码覆盖部分歌词、历史、行为和推荐逻辑。
 
-截至 2026-08-18，测试 Target 存在已知编译问题，不能据此宣称测试通过；审计机器也缺少匹配的 iOS 26.5 Platform / Simulator Runtime。修复根 README 中记录的测试错误并安装匹配 Runtime 后，才可使用 `Command-U` 或 `xcodebuild test` 执行完整测试。
+截至 2026-08-18，三个测试文件已通过 Swift 6 严格并发类型检查，测试源码中的已知类型和 Actor 隔离问题已修复。审计机器只有与 Xcode 26.6 不兼容的 iOS 27.0 Runtime，完整测试仍待 GitHub CI 或另一台装有 iOS 26.5 Runtime 的机器验证；不能把源码类型检查描述为“所有测试通过”。

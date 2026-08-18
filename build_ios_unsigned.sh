@@ -13,13 +13,51 @@ PROJECT="$ROOT/NaviLyrics.xcodeproj"
 SCHEME="NaviLyrics"
 APP_NAME="NaviLyrics"
 DERIVED_DATA="$BUILD/DerivedData-iOS"
+TEST_DERIVED_DATA="$BUILD/DerivedData-Tests"
 STAGING="$BUILD/IPA"
 IPA_PATH="$BUILD/NaviLyrics-iOS18-LiveContainer.ipa"
 XCODEBUILD_BIN="${XCODEBUILD_BIN:-xcodebuild}"
 
-rm -rf "$DERIVED_DATA" "$STAGING"
+resolve_test_destination() {
+  if [[ -n "${TEST_DESTINATION:-}" ]]; then
+    printf '%s\n' "$TEST_DESTINATION"
+    return
+  fi
+
+  local simulator_id
+  local simulator_ids
+  simulator_ids="$("$XCODEBUILD_BIN" \
+    -project "$PROJECT" \
+    -scheme "$SCHEME" \
+    -showdestinations 2>/dev/null \
+    | sed -nE \
+      's/.*platform:iOS Simulator,.*id:([0-9A-Fa-f-]{36}),.*/\1/p')"
+  simulator_id="${simulator_ids%%$'\n'*}"
+
+  if [[ -z "$simulator_id" ]]; then
+    echo "❌ 没有与当前 Xcode 匹配的 iOS Simulator" >&2
+    echo "   请安装匹配 Runtime，或通过 TEST_DESTINATION 指定测试目标" >&2
+    exit 1
+  fi
+
+  printf 'platform=iOS Simulator,id=%s\n' "$simulator_id"
+}
+
+TEST_DESTINATION_RESOLVED="$(resolve_test_destination)"
+
+rm -rf "$TEST_DERIVED_DATA" "$DERIVED_DATA" "$STAGING"
 rm -f "$IPA_PATH"
 mkdir -p "$BUILD"
+
+echo "========== 运行单元测试 =========="
+
+"$XCODEBUILD_BIN" test \
+  -project "$PROJECT" \
+  -scheme "$SCHEME" \
+  -configuration Debug \
+  -destination "$TEST_DESTINATION_RESOLVED" \
+  -derivedDataPath "$TEST_DERIVED_DATA" \
+  CODE_SIGNING_ALLOWED=NO
 
 echo "========== 构建 iOS Release（无签名） =========="
 

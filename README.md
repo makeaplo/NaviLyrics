@@ -2,7 +2,7 @@
 
 NaviLyrics 是一个面向个人使用的原生 iOS / iPadOS Navidrome、OpenSubsonic 音乐播放器，重点提供接近 Apple Music 的同步歌词、连续播放和本机音乐行为体验。
 
-> **项目状态：实验性、自用开发中。** 核心应用源码可以通过 Swift 6 类型检查，主要产品链路已经实现；但当前测试 Target 存在已知编译问题，完整 Xcode 测试尚未通过，因此目前不应视为稳定发布版。
+> **项目状态：实验性、自用开发中。** 核心应用和测试源码已经通过 Swift 6 严格并发类型检查，主要产品链路已经实现；但完整 Xcode 单元测试仍待首次 CI 运行验证，因此目前不应视为稳定发布版。
 
 - [快速开始](#快速开始)
 - [已实现能力](#已实现能力)
@@ -24,7 +24,7 @@ NaviLyrics 是一个面向个人使用的原生 iOS / iPadOS Navidrome、OpenSub
 | 外部运行时依赖 | 无；只使用 Apple 系统框架 |
 | 产品语言 | 当前为中文 |
 | 项目成熟度 | 实验性、自用开发中 |
-| 自动化测试 | 测试 Target 已存在，但当前不能完整编译和运行 |
+| 自动化测试 | 测试源码类型检查通过；最小 CI 已配置，完整测试待首次远端运行 |
 | 开源许可 | 仓库当前未提供 `LICENSE` 文件 |
 
 最后一次项目状态核验：2026-08-18。状态变化必须同步更新本 README 和[项目审计与优化迭代规范](docs/PROJECT-AUDIT-AND-IMPROVEMENT-SPEC.md)。
@@ -124,7 +124,7 @@ Debug 构建包含一个隐藏的本地演示入口：
 
 | 优先级 | 限制或问题 | 用户影响 |
 | --- | --- | --- |
-| P0 | 测试 Target 当前无法编译 | 无法证明现有自动化测试通过，也不具备可信发布基线 |
+| P0 | `REL-001` 已修复源码并进入待验证 | 完整测试尚无通过结果，可信发布基线仍未闭环 |
 | P1 | 专辑登录/刷新只请求一次最近 300 张 | 超过 300 张专辑时，“专辑目录”和推荐候选不完整 |
 | P1 | 历史、行为和推荐缓存只按服务器地址隔离 | 同一服务器切换不同账号时可能复用上一账号的本机数据 |
 | P1 | 首次推荐会逐张专辑串行请求曲目 | 大型音乐库中推荐加载可能很慢并产生大量请求 |
@@ -193,7 +193,7 @@ chmod +x build_ios_unsigned.sh
 build/NaviLyrics-iOS18-LiveContainer.ipa
 ```
 
-当前脚本只执行 Release Build、ad-hoc 签名和 IPA 校验，**不会运行单元测试**。在测试门禁修复前，成功生成 IPA 不代表测试通过。
+脚本会先在可用的 iOS Simulator 上运行单元测试；只有测试成功，才继续执行 Release Build、ad-hoc 签名和 IPA 校验。没有匹配 Runtime 或测试失败时不会生成新的 IPA。可通过 `TEST_DESTINATION` 指定测试目标。
 
 导入、重签和 Xcode 选择说明见 [README-MAC.md](README-MAC.md)。
 
@@ -203,15 +203,14 @@ build/NaviLyrics-iOS18-LiveContainer.ipa
 
 截至 2026-08-18：
 
-- `HEAD` 应用 Swift 源码独立类型检查通过。
-- 当前工作区应用 Swift 源码独立类型检查通过。
-- 推荐测试存在 3 处 `SubsonicSong` / `NowPlayingSong` 类型不匹配，问题已存在于 `HEAD`。
-- 当前工作区的核心测试另有一个 `@MainActorx` 拼写错误。
-- 行为 Store 测试文件可独立类型检查。
-- 审计机器缺少 iOS 26.5 Platform / Simulator Runtime，完整 `xcodebuild test` 未能开始构建。
-- 当前没有 UI Test Target、CI 或覆盖率门禁。
+- 应用模块已使用 Xcode 26.6 的 Swift 6 编译器和 iOS 26.5 SDK，在启用测试导出的条件下编译通过。
+- 三个 XCTest 文件已按测试 Target 的 Swift 6、Strict Concurrency 设置整体类型检查通过。
+- 已修复 `@MainActorx`、推荐测试的 `SubsonicSong` / `NowPlayingSong` 类型错误，以及 `XCTestCase` 类级 MainActor 隔离冲突。
+- [`.github/workflows/ci.yml`](.github/workflows/ci.yml) 已配置 `macos-26`、Xcode 26.6、iOS 26.5 Simulator 的空白检查、Unit Test 和 Release Build；该工作流需推送后才能产生首次结果。
+- 本机只有 iOS 27.0 Runtime，与当前 Xcode 26.6 不兼容；Apple 组件服务也不再提供 26.5/26.6 Runtime，因此本机完整 `xcodebuild test` 仍未运行。
+- 当前仍没有 UI Test Target 或覆盖率门禁。
 
-在修复已知编译问题并安装匹配 Runtime 后，预期测试命令为：
+在安装匹配 Runtime 的机器上，测试命令为：
 
 ```bash
 xcodebuild \
@@ -221,7 +220,7 @@ xcodebuild \
   test
 ```
 
-不要把普通 App Run、IPA 构建或单个 Swift 文件类型检查当作完整测试通过。
+不要把普通 App Run、IPA 构建或源码类型检查当作完整测试通过；`REL-001` 只有在 CI 或匹配 Runtime 的机器上获得绿色测试结果后才能标记完成。
 
 ## 工程结构
 
@@ -256,4 +255,4 @@ docs/                    审计、规范和后续迭代依据
 - [项目审计与优化迭代规范](docs/PROJECT-AUDIT-AND-IMPROVEMENT-SPEC.md)：客观基线、问题编号、研发规范、测试策略和发布门禁。
 - [Mac、真机与 LiveContainer 说明](README-MAC.md)：Xcode 运行、IPA 导入和重签补充说明。
 
-如果准备继续开发，请先处理规范中的 `REL-001`，恢复测试 Target 和可信构建基线；随后依次处理专辑分页、账号数据隔离和推荐请求性能。
+继续开发时，应先让规范中的 `REL-001` 获得首次 CI 绿色结果；随后依次处理专辑分页、账号数据隔离和推荐请求性能。

@@ -2,6 +2,7 @@ import XCTest
 @testable import NaviLyrics
 
 final class PersonalizedRecommendationEngineTests: XCTestCase {
+    @MainActor
     func testPrefersUnplayedSongFromFavoriteArtist() throws {
         let now = Date(timeIntervalSince1970: 1_000_000)
         let favorite = makeSong(
@@ -23,7 +24,9 @@ final class PersonalizedRecommendationEngineTests: XCTestCase {
             album: "另一张专辑"
         )
 
-        var behavior = PlaybackBehaviorSummary(song: favorite)
+        var behavior = PlaybackBehaviorSummary(
+            song: makeNowPlayingSong(from: favorite)
+        )
         behavior.playCount = 3
         behavior.lastPlayedAt = now.addingTimeInterval(-30 * 86_400)
 
@@ -42,6 +45,7 @@ final class PersonalizedRecommendationEngineTests: XCTestCase {
         )
     }
 
+    @MainActor
     func testSkipsRecentlyPlayedSongsAndLimitsArtistRepetition() {
         let now = Date(timeIntervalSince1970: 1_000_000)
         let recent = makeSong(
@@ -75,10 +79,14 @@ final class PersonalizedRecommendationEngineTests: XCTestCase {
             album: "另一张专辑"
         )
 
-        var recentBehavior = PlaybackBehaviorSummary(song: recent)
+        var recentBehavior = PlaybackBehaviorSummary(
+            song: makeNowPlayingSong(from: recent)
+        )
         recentBehavior.playCount = 2
         recentBehavior.lastPlayedAt = now.addingTimeInterval(-86_400)
-        var artistBehavior = PlaybackBehaviorSummary(song: first)
+        var artistBehavior = PlaybackBehaviorSummary(
+            song: makeNowPlayingSong(from: first)
+        )
         artistBehavior.playCount = 4
         artistBehavior.lastPlayedAt = now.addingTimeInterval(-20 * 86_400)
 
@@ -143,6 +151,7 @@ final class PersonalizedRecommendationEngineTests: XCTestCase {
         )
     }
 
+    @MainActor
     private func makeSong(
         id: String,
         title: String,
@@ -159,6 +168,22 @@ final class PersonalizedRecommendationEngineTests: XCTestCase {
             bitRate: 960,
             coverArt: "cover-\(id)",
             isStarred: false
+        )
+    }
+
+    @MainActor
+    private func makeNowPlayingSong(
+        from song: SubsonicSong
+    ) -> NowPlayingSong {
+        NowPlayingSong(
+            id: song.id,
+            title: song.title,
+            artist: song.artist,
+            album: song.album,
+            duration: song.duration,
+            streamURL: URL(fileURLWithPath: "/test/stream/\(song.id)"),
+            artworkURL: nil,
+            artworkIdentifier: song.coverArt
         )
     }
 }

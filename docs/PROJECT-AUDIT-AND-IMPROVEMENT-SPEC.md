@@ -1,8 +1,8 @@
 # NaviLyrics 项目审计与优化迭代规范
 
-> 状态：生效中  
-> 基线：`master` / `HEAD`，审计日期 2026-08-18  
-> 适用范围：产品设计、架构调整、功能研发、测试、发布和文档维护  
+> 状态：生效中
+> 基线：`master` / `HEAD`，审计日期 2026-08-18
+> 适用范围：产品设计、架构调整、功能研发、测试、发布和文档维护
 > 文档目标：把已验证的项目事实、风险、优先级和验收标准固化为后续迭代依据
 
 ## 1. 文档规则
@@ -54,16 +54,16 @@ NaviLyrics 当前服务于能够自行维护 Navidrome / OpenSubsonic 音乐库�
 
 | 检查项 | 结果 | 证据 |
 | --- | --- | --- |
-| 跟踪文件 | 74 | `git ls-files \| wc -l` |
+| 跟踪文件 | 76 | `git ls-files \| wc -l` |
 | Swift 文件 | 60 | `rg --files -g '*.swift' \| wc -l` |
-| Swift 代码行 | 18,479 | `wc -l $(rg --files -g '*.swift')` |
-| 测试代码 | 3 个文件、454 行、15 个测试方法 | [`Tests/`](../Tests) |
-| Git 历史 | 38 个提交、1 名作者，集中于 2026-08-11 至 2026-08-16 | `git log` |
+| Swift 代码行 | 18,505 | `wc -l $(rg --files -g '*.swift')` |
+| 测试代码 | 3 个文件、480 行、15 个测试方法 | [`Tests/`](../Tests) |
+| Git 历史 | 40 个提交、1 名作者，集中于 2026-08-11 至 2026-08-18 | `git log` |
 | 应用版本 | 0.3.0 / build 3 | [`NaviLyrics.xcodeproj/project.pbxproj`](../NaviLyrics.xcodeproj/project.pbxproj) |
 | 最低系统 | iOS / iPadOS 18.0 | [`NaviLyrics.xcodeproj/project.pbxproj`](../NaviLyrics.xcodeproj/project.pbxproj) |
 | Swift 配置 | Swift 6、Strict Concurrency complete、默认 MainActor | [`NaviLyrics.xcodeproj/project.pbxproj`](../NaviLyrics.xcodeproj/project.pbxproj) |
 | 外部运行时依赖 | 未发现 | 源码 import 与 Xcode 工程包引用盘点 |
-| CI / 格式 / 覆盖率门禁 | 未发现 | 仓库文件盘点 |
+| CI / 格式 / 覆盖率门禁 | 最小 CI 已加入，覆盖空白检查、Unit Test 和 Release Build；无格式化与覆盖率门禁 | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) |
 
 测试代码行比例只能反映测试投入规模，不能等同于语句覆盖率；当前工程没有覆盖率报告或门禁。
 
@@ -71,17 +71,16 @@ NaviLyrics 当前服务于能够自行维护 Navidrome / OpenSubsonic 音乐库�
 
 | 验证对象 | 结果 | 结论边界 |
 | --- | --- | --- |
-| `HEAD` 应用 Swift 源码独立类型检查 | 通过 | 仅证明 Swift 类型检查，不包含资源、签名、链接和运行时行为 |
-| 当前工作区应用 Swift 源码独立类型检查 | 通过 | 包含当前未提交的两个歌词 `Text` 拼接改动 |
-| `NaviLyricsCoreTests.swift` 类型检查 | 失败 | 当前工作区存在未知属性 `@MainActorx` |
-| `PersonalizedRecommendationEngineTests.swift` 类型检查 | 失败 | 3 处把 `SubsonicSong` 传给只接受 `NowPlayingSong` 的初始化器；问题已存在于 `HEAD` |
-| `PlaybackBehaviorStoreTests.swift` 类型检查 | 通过 | 只代表该测试源文件可编译，不代表测试已运行 |
-| `xcodebuild build-for-testing` | 未执行到构建 | 审计机器缺少匹配的 iOS 26.5 Platform / Simulator Runtime，退出码 70 |
+| `HEAD` 应用 Swift 测试模块编译 | 通过 | 使用 Swift 6、iOS 26.5 SDK、MainActor 默认隔离和 `-enable-testing`；不包含资源、签名、链接和运行时行为 |
+| 三个 XCTest 源文件整体类型检查 | 通过 | 使用测试 Target 的 Swift 6、Strict Concurrency 和 XCTest Swift Overlay；只证明源码可编译，不证明测试断言通过 |
+| `xcodebuild build-for-testing` | 环境阻断 | 沙箱内在 Asset Catalog 阶段因无可用 Runtime 失败；沙箱外没有 Xcode 26.6 可用的 Simulator Destination |
+| 本机 Runtime | 不匹配 | Xcode 26.6 使用 iOS 26.5 SDK，本机只有 iOS 27.0 Runtime；Apple 组件服务不再提供 26.5/26.6 下载 |
+| GitHub CI | 已配置、待首次运行 | `macos-26` 当前提供 Xcode 26.6、iOS 26.5 Runtime 和 iPhone 17 Simulator；未推送前不能宣称通过 |
 | 真实 Navidrome 集成 | 未验证 | 审计环境没有接入真实服务器和真实媒体库 |
 
-不得基于上述结果宣称“所有测试通过”或“真机运行已验证”。完整验证必须在安装匹配 Platform / Simulator Runtime 的 Xcode 上执行。
+不得基于类型检查宣称“所有测试通过”或“真机运行已验证”。完整验证必须由首次 CI 运行或安装匹配 Platform / Simulator Runtime 的 Xcode 提供。
 
-### 3.3 当前工作区状态
+### 3.3 审计基线工作区处理记录
 
 审计时存在三个未提交修改：
 
@@ -89,7 +88,7 @@ NaviLyrics 当前服务于能够自行维护 Navidrome / OpenSubsonic 音乐库�
 - `Features/Player/Lyrics/Shared/TimedLyricTextBuilder.swift`
 - `Tests/NaviLyricsCoreTests.swift`
 
-前两个文件把字符串插值式 `Text` 拼接改为 `Text + Text`；第三个文件把合法的 `@MainActor` 改成了错误的 `@MainActorx`。后续修复必须区分原有工作区修改和新增修改，避免覆盖未确认的用户工作。
+前两个文件把字符串插值式 `Text` 拼接改为 `Text + Text`；第三个文件把合法的 `@MainActor` 改成了错误的 `@MainActorx`。这批审计基线已由提交 `e8ff11a` 保存；随后对测试源码的修复作为独立迭代处理。
 
 ## 4. 多视角审计结论
 
@@ -103,7 +102,7 @@ NaviLyrics 当前服务于能够自行维护 Navidrome / OpenSubsonic 音乐库�
 
 **正面结论**：工程采用 Swift 6、完整并发检查、文件系统同步 Group 和纯 Apple 框架依赖；API 层有类型化错误，主要异步页面具备取消或旧结果保护。证据是 [`NaviLyrics.xcodeproj/project.pbxproj`](../NaviLyrics.xcodeproj/project.pbxproj)、[`Core/Subsonic/SubsonicClient.swift`](../Core/Subsonic/SubsonicClient.swift) 和 [`Features/Library/ContentView.swift`](../Features/Library/ContentView.swift)。
 
-**风险结论**：仓库没有 CI、格式化或覆盖率门禁，发布脚本只构建和打包，不执行测试；测试从已提交版本开始就存在编译错误。38 个提交均来自一名作者且集中在六天内，由此判断当前研发速度快，但质量反馈和知识沉淀不足。证据是 [`build_ios_unsigned.sh`](../build_ios_unsigned.sh)、[`Tests/PersonalizedRecommendationEngineTests.swift`](../Tests/PersonalizedRecommendationEngineTests.swift) 及 Git 历史。
+**风险结论**：最小 CI 和 IPA 测试门禁已经加入，但尚无首次远端运行结果，也没有格式化或覆盖率门禁。提交仍集中于一名作者和较短周期，由此判断当前研发速度快，但质量反馈和知识沉淀仍不足。证据是 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)、[`build_ios_unsigned.sh`](../build_ios_unsigned.sh) 及 Git 历史。
 
 ### 4.3 产品视角
 
@@ -121,7 +120,7 @@ NaviLyrics 当前服务于能够自行维护 Navidrome / OpenSubsonic 音乐库�
 
 **正面结论**：现有 15 个测试方法已经触及歌词身份、LRC 异常输入、时间线、历史、行为和推荐缓存，不是完全没有回归意识。证据是 [`Tests/`](../Tests)。
 
-**风险结论**：测试 Target 当前不可编译；没有 UI Test Target、网络集成测试、真实服务冒烟自动化、覆盖率和 CI。播放器事件、队列恢复、结构化歌词、账号隔离、网络错误和歌词 UI 是主要空白。工程 Target 定义见 [`NaviLyrics.xcodeproj/project.pbxproj`](../NaviLyrics.xcodeproj/project.pbxproj)。
+**风险结论**：测试源码编译错误已修复，但完整测试尚未运行；当前仍没有 UI Test Target、网络集成测试、真实服务冒烟自动化和覆盖率门禁。播放器事件、队列恢复、结构化歌词、账号隔离、网络错误和歌词 UI 是主要空白。工程 Target 定义见 [`NaviLyrics.xcodeproj/project.pbxproj`](../NaviLyrics.xcodeproj/project.pbxproj)。
 
 ## 5. 当前架构
 
@@ -166,7 +165,7 @@ NaviLyricsApp
 
 | ID | 优先级 | 当前状态 | 主题 |
 | --- | --- | --- | --- |
-| REL-001 | P0 | 待处理 | 测试 Target 无法编译 |
+| REL-001 | P0 | 待验证 | 测试源码与发布门禁已修复，等待完整测试结果 |
 | LIB-001 | P1 | 待处理 | 专辑目录只有最近 300 张 |
 | DAT-001 | P1 | 待处理 | 同服务器不同账号共享本机数据 |
 | REC-001 | P1 | 待处理 | 推荐整库串行 N+1 请求 |
@@ -179,13 +178,22 @@ NaviLyricsApp
 | SEA-001 | P2 | 待处理 | 搜索上限与部分失败不透明 |
 | I18N-001 | P2 | 待处理 | UI 文案不可本地化 |
 
-### REL-001：测试 Target 无法编译（P0）
+### REL-001：测试 Target 无法编译（P0，待验证）
 
-**事实**
+**原始故障**
 
 - [`Tests/PersonalizedRecommendationEngineTests.swift`](../Tests/PersonalizedRecommendationEngineTests.swift) 使用 `SubsonicSong` 构建行为摘要。
 - [`Core/Playback/PlaybackBehaviorStore.swift`](../Core/Playback/PlaybackBehaviorStore.swift) 的对应初始化器只接受 `NowPlayingSong`。
-- 当前 [`Tests/NaviLyricsCoreTests.swift`](../Tests/NaviLyricsCoreTests.swift) 包含 `@MainActorx`。
+- [`Tests/NaviLyricsCoreTests.swift`](../Tests/NaviLyricsCoreTests.swift) 包含 `@MainActorx`。
+- 两个 XCTestCase 子类整体标记 `@MainActor`，在 Swift 6 下与 XCTest 的非隔离初始化器冲突。
+
+**当前进展**
+
+- `@MainActorx` 已修正；类级 Actor 隔离已下移到测试方法和辅助构造器。
+- 推荐测试通过测试专用 `NowPlayingSong` 构造器生成行为摘要，不修改生产接口。
+- 应用测试模块和三个 XCTest 源文件已整体编译/类型检查通过。
+- 最小 GitHub CI 已配置；IPA 脚本已验证在没有匹配 Simulator 时会在 Release Build 前失败。
+- 尚缺完整 `xcodebuild test` 绿色结果，因此状态保持“待验证”。
 
 **验收标准**
 
@@ -442,10 +450,10 @@ NaviLyricsApp
 
 ### 阶段 0：恢复可信基线
 
-- 完成 REL-001。
-- 安装匹配的 Xcode Platform / Simulator Runtime。
-- 建立最小 CI：应用构建、单元测试、差异检查。
-- 让 IPA 构建依赖测试成功。
+- `REL-001` 已进入待验证，等待首次 CI 绿色结果。
+- 本机匹配 Runtime 已无法从 Apple 组件服务下载，改由 CI 的 iOS 26.5 Runtime 完成验证。
+- 最小 CI 已建立：应用 Release Build、Unit Test、全仓空白检查。
+- IPA 构建已经依赖测试成功。
 
 ### 阶段 1：修复核心正确性
 
@@ -467,4 +475,5 @@ NaviLyricsApp
 
 ## 11. 变更记录
 
+- 2026-08-18：修复测试源码类型与 Actor 隔离错误；加入最小 GitHub CI 和 IPA 测试门禁；`REL-001` 转为待验证。
 - 2026-08-18：依据完整仓库审计创建；登记测试、分页、数据隔离、推荐性能、安全、播放事件、架构、媒体和本地化问题。

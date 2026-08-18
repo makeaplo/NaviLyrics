@@ -1,7 +1,6 @@
 import XCTest
 @testable import NaviLyrics
 
-@MainActor
 final class NaviLyricsCoreTests: XCTestCase {
     @MainActor
     func testDuplicateTimestampAndTextReceiveUniqueIdentities() {
@@ -74,7 +73,7 @@ final class NaviLyricsCoreTests: XCTestCase {
         XCTAssertFalse(first?.absoluteString.contains("secret") ?? true)
     }
 
-    @MainActorx
+    @MainActor
     func testDemoClientProvidesLocalLibraryAndLyrics() async throws {
         let client = SubsonicClient.demo()
 

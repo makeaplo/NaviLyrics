@@ -1,8 +1,8 @@
 import XCTest
 @testable import NaviLyrics
 
-@MainActor
 final class PlaybackBehaviorStoreTests: XCTestCase {
+    @MainActor
     func testBehaviorStoreSeparatesPositiveAndNegativeSignals() throws {
         let suiteName = "NaviLyricsCoreTests.behavior.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -43,6 +43,7 @@ final class PlaybackBehaviorStoreTests: XCTestCase {
         XCTAssertEqual(summary.skipCount, 1)
     }
 
+    @MainActor
     func testBehaviorStorePersistsPerServer() throws {
         let suiteName = "NaviLyricsCoreTests.behavior.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -65,6 +66,7 @@ final class PlaybackBehaviorStoreTests: XCTestCase {
         XCTAssertEqual(restored.items.map(\.id), ["song"])
     }
 
+    @MainActor
     private func makeSong(id: String) throws -> NowPlayingSong {
         let streamURL = try XCTUnwrap(
             URL(string: "https://music.example.com/stream/\(id)")
