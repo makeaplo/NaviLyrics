@@ -15,6 +15,9 @@ struct ForYouView: View {
     @State private var isLoadingRecommendations = false
     @State private var recommendationErrorMessage: String?
     @State private var recommendationReloadRevision = 0
+    @State private var loadRevision = UUID()
+    @State private var loadedRecommendationAlbums = 0
+    @State private var totalRecommendationAlbums = 0
 
     var body: some View {
         Group {
@@ -67,7 +70,7 @@ struct ForYouView: View {
             if isLoadingRecommendations {
                 HStack {
                     Spacer()
-                    ProgressView("正在分析你的音乐偏好…")
+                    ProgressView("正在加载推荐素材：\(loadedRecommendationAlbums)/\(totalRecommendationAlbums) 张专辑")
                     Spacer()
                 }
                 .listRowBackground(Color.clear)
@@ -89,7 +92,8 @@ struct ForYouView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .listRowBackground(Color.clear)
-            } else {
+            }
+            if !visibleRecommendations.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: 14) {
                         ForEach(visibleRecommendations) { recommendation in
@@ -140,6 +144,7 @@ struct ForYouView: View {
             albumSignature,
             signalSignature,
             "\(recommendationReloadRevision)",
+            "\(recommendationCache.clearRevision)",
         ].joined(separator: "||")
     }
 
@@ -174,7 +179,17 @@ struct ForYouView: View {
         using client: SubsonicClient,
         force: Bool = false
     ) async {
-        let librarySignature = session.albums.map(\.id).joined(separator: ",")
+        let account = session.activeLibraryIdentifier
+        guard account == LibraryIdentity.account(
+            serverURL: client.baseURL.absoluteString, username: client.username
+        ), recommendationCache.activeServerURL == account else { return }
+        let revision = UUID()
+        loadRevision = revision
+        let request = recommendationRequest
+        defer {
+            if loadRevision == revision { isLoadingRecommendations = false }
+        }
+        let librarySignature = account + "|" + session.albums.map(\.id).joined(separator: ",")
         let signalSignature = recommendationSignalSignature
         if force || recommendationLibrarySignature != librarySignature {
             recommendationLibrarySignature = librarySignature
@@ -205,13 +220,23 @@ struct ForYouView: View {
         if recommendationLibrarySongs.isEmpty, !session.albums.isEmpty {
             isLoadingRecommendations = true
             recommendationErrorMessage = nil
+            loadedRecommendationAlbums = 0
+            totalRecommendationAlbums = session.albums.count
             do {
-                recommendationLibrarySongs = try await client.librarySongs(
-                    from: session.albums
-                )
+                let loaded = try await client.librarySongs(from: session.albums) { done, total in
+                    guard loadRevision == revision, session.activeLibraryIdentifier == account else { return }
+                    loadedRecommendationAlbums = done
+                    totalRecommendationAlbums = total
+                }
+                try Task.checkCancellation()
+                guard loadRevision == revision, session.activeLibraryIdentifier == account,
+                      recommendationRequest == request else { return }
+                recommendationLibrarySongs = loaded
             } catch is CancellationError {
                 return
             } catch {
+                guard loadRevision == revision, session.activeLibraryIdentifier == account,
+                      recommendationRequest == request else { return }
                 recommendationErrorMessage =
                     "推荐加载失败：\(error.localizedDescription)"
                 isLoadingRecommendations = false

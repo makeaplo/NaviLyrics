@@ -89,27 +89,7 @@ final class PlayerStore {
         let progress: TimeInterval
     }
 
-    /// v1 persisted complete authenticated URLs. It is decoded only for a
-    /// one-time migration to the credential-free v2 representation.
-    private struct LegacyPersistedPlaybackState: Codable {
-        struct Song: Codable {
-            let id: String
-            let title: String
-            let artist: String
-            let album: String
-            let duration: TimeInterval
-            let streamURL: URL
-            let artworkURL: URL?
-        }
-
-        let serverURL: String
-        let queue: [Song]
-        let queueIndex: Int
-        let progress: TimeInterval
-    }
-
-    private static let playbackStateKey = "lastPlaybackState.v2"
-    private static let legacyPlaybackStateKey = "lastPlaybackState.v1"
+    private static let playbackStateKey = "lastPlaybackState.v3."
     private static let persistenceInterval: TimeInterval = 2
     private static let progressObservationInterval: TimeInterval = 0.2
     private static let artworkCache = NSCache<NSURL, UIImage>()
@@ -147,7 +127,7 @@ final class PlayerStore {
     private var remoteCommandHandlers: [
         (command: MPRemoteCommand, token: Any)
     ] = []
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
     private var persistenceServerURL: String?
     private var lastPersistedProgress: TimeInterval = -.infinity
     private var lastNowPlayingInfoProgress: TimeInterval = -.infinity
@@ -159,7 +139,8 @@ final class PlayerStore {
     private var hasQualifiedCurrentPlay = false
     private var isDemoPlayback = false
 
-    init() {
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         prepareAudioSession()
         installAudioSessionObservers()
         configureRemoteCommands()
@@ -274,13 +255,14 @@ final class PlayerStore {
         }
     }
 
-    /// Restores the last queue and position for the connected server. Restored
+    /// Restores the last queue and position for the connected account. Restored
     /// audio remains paused so launching the app never starts sound by itself.
     @discardableResult
     func restoreLastPlayback(
         for serverURL: String,
         using client: SubsonicClient
     ) -> Bool {
+        reset()
         let normalizedServerURL = Self.normalizedServerURL(serverURL)
         persistenceServerURL = normalizedServerURL
         guard let state = persistedPlaybackState(
@@ -356,14 +338,14 @@ final class PlayerStore {
             progress: currentProgress
         )
         guard let data = try? JSONEncoder().encode(state) else { return }
-        defaults.set(data, forKey: Self.playbackStateKey)
-        defaults.removeObject(forKey: Self.legacyPlaybackStateKey)
+        defaults.set(data, forKey: Self.playbackStateKey + serverURL)
         lastPersistedProgress = currentProgress
     }
 
     func clearPersistedPlaybackState() {
-        defaults.removeObject(forKey: Self.playbackStateKey)
-        defaults.removeObject(forKey: Self.legacyPlaybackStateKey)
+        if let account = persistenceServerURL {
+            defaults.removeObject(forKey: Self.playbackStateKey + account)
+        }
         lastPersistedProgress = -.infinity
     }
 
@@ -522,6 +504,7 @@ final class PlayerStore {
         } else {
             persistPlaybackState(force: true)
         }
+        persistenceServerURL = nil
         isRestoringPlayback = false
         restoreTimeoutTask?.cancel()
         artworkTask?.cancel()
@@ -861,66 +844,10 @@ final class PlayerStore {
     private func persistedPlaybackState(
         for normalizedServerURL: String
     ) -> PersistedPlaybackState? {
-        if let data = defaults.data(forKey: Self.playbackStateKey),
-           let state = try? JSONDecoder().decode(
-                PersistedPlaybackState.self,
-                from: data
-           ), Self.normalizedServerURL(state.serverURL)
-                == normalizedServerURL {
-            return state
-        }
-
-        guard let legacyData = defaults.data(
-            forKey: Self.legacyPlaybackStateKey
-        ), let legacyState = try? JSONDecoder().decode(
-            LegacyPersistedPlaybackState.self,
-            from: legacyData
-        ), Self.normalizedServerURL(legacyState.serverURL)
-            == normalizedServerURL else {
-            return nil
-        }
-
-        let migratedState = PersistedPlaybackState(
-            serverURL: legacyState.serverURL,
-            queue: legacyState.queue.map { song in
-                PersistedSong(
-                    song: NowPlayingSong(
-                        id: song.id,
-                        title: song.title,
-                        artist: song.artist,
-                        album: song.album,
-                        duration: song.duration,
-                        streamURL: song.streamURL,
-                        artworkURL: song.artworkURL,
-                        artworkIdentifier: Self.artworkIdentifier(
-                            from: song.artworkURL
-                        )
-                    )
-                )
-            },
-            queueIndex: legacyState.queueIndex,
-            progress: legacyState.progress.isFinite
-                ? max(legacyState.progress, 0)
-                : 0
-        )
-        if let migratedData = try? JSONEncoder().encode(migratedState) {
-            defaults.set(migratedData, forKey: Self.playbackStateKey)
-            defaults.removeObject(forKey: Self.legacyPlaybackStateKey)
-        }
-        return migratedState
-    }
-
-    private static func artworkIdentifier(from url: URL?) -> String? {
-        guard let url,
-              let components = URLComponents(
-                url: url,
-                resolvingAgainstBaseURL: false
-              ) else {
-            return nil
-        }
-        return components.queryItems?.first {
-            $0.name == "id"
-        }?.value
+        guard let data = defaults.data(forKey: Self.playbackStateKey + normalizedServerURL),
+              let state = try? JSONDecoder().decode(PersistedPlaybackState.self, from: data),
+              state.serverURL == normalizedServerURL else { return nil }
+        return state
     }
 
     // MARK: 系统音频会话
@@ -1193,35 +1120,7 @@ final class PlayerStore {
     }
 
     private static func normalizedServerURL(_ value: String) -> String {
-        let trimmed = value.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        )
-        let candidate = trimmed.contains("://")
-            ? trimmed
-            : "http://\(trimmed)"
-        guard var components = URLComponents(string: candidate),
-              let host = components.host?.lowercased() else {
-            return trimmed
-                .trimmingCharacters(
-                    in: CharacterSet(charactersIn: "/")
-                )
-                .lowercased()
-        }
-        components.scheme = components.scheme?.lowercased()
-        components.host = host
-        components.query = nil
-        components.fragment = nil
-        if components.path == "/" {
-            components.path = ""
-        } else {
-            components.path = components.path.trimmingCharacters(
-                in: CharacterSet(charactersIn: "/")
-            )
-            if !components.path.isEmpty {
-                components.path = "/\(components.path)"
-            }
-        }
-        return components.string ?? candidate.lowercased()
+        LibraryIdentity.normalizedKey(value)
     }
 
     isolated deinit {

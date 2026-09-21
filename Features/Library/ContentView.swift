@@ -108,7 +108,10 @@ struct ContentView: View {
         }
         .overlay {
             if session.isRefreshing {
-                ProgressView("正在刷新")
+                HStack {
+                    ProgressView("已读取 \(session.loadedAlbumCount) 张专辑")
+                    Button("取消") { session.cancelLibraryLoading() }
+                }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
                     .background(.regularMaterial, in: Capsule())

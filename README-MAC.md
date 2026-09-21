@@ -107,4 +107,4 @@ NaviLyrics 会优先调用 `getLyricsBySongId` 获取 OpenSubsonic 结构化歌�
 
 工程包含 `NaviLyricsTests` 测试 Target，测试源码覆盖部分歌词、历史、行为和推荐逻辑。
 
-截至 2026-08-18，三个测试文件已通过 Swift 6 严格并发类型检查，测试源码中的已知类型和 Actor 隔离问题已修复。审计机器只有与 Xcode 26.6 不兼容的 iOS 27.0 Runtime，完整测试仍待 GitHub CI 或另一台装有 iOS 26.5 Runtime 的机器验证；不能把源码类型检查描述为“所有测试通过”。
+截至 2026-09-21，本机已使用 Xcode 27.0（27A266a）和 iOS 27.0 Simulator 完成完整单元测试，并通过无签名 iOS Release 构建。测试范围与结果详见根目录 README 和审计文档第 12 节；远端 CI、真实 Navidrome 与真机验收仍待完成。

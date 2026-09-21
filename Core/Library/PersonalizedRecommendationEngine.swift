@@ -447,6 +447,7 @@ final class PersonalizedRecommendationCache {
     private let storageKey = "personalizedRecommendationCache.v1"
 
     private(set) var activeServerURL = ""
+    private(set) var clearRevision = 0
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -496,6 +497,14 @@ final class PersonalizedRecommendationCache {
         save(cache)
     }
 
+    func clearCurrentAccount() {
+        guard !activeServerURL.isEmpty else { return }
+        var cache = persistedCache()
+        cache.snapshotsByServer.removeValue(forKey: activeServerURL)
+        clearRevision &+= 1
+        save(cache)
+    }
+
     private func persistedCache() -> PersistedCache {
         guard let data = defaults.data(forKey: storageKey),
               let cache = try? JSONDecoder().decode(
@@ -513,33 +522,6 @@ final class PersonalizedRecommendationCache {
     }
 
     private static func normalizedServerURL(_ value: String) -> String {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return "" }
-
-        let candidate = trimmed.contains("://")
-            ? trimmed
-            : "http://\(trimmed)"
-        guard var components = URLComponents(string: candidate),
-              let host = components.host?.lowercased() else {
-            return trimmed
-                .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-                .lowercased()
-        }
-
-        components.scheme = components.scheme?.lowercased()
-        components.host = host
-        components.query = nil
-        components.fragment = nil
-        if components.path == "/" {
-            components.path = ""
-        } else {
-            components.path = components.path.trimmingCharacters(
-                in: CharacterSet(charactersIn: "/")
-            )
-            if !components.path.isEmpty {
-                components.path = "/\(components.path)"
-            }
-        }
-        return components.string ?? candidate.lowercased()
+        LibraryIdentity.normalizedKey(value)
     }
 }

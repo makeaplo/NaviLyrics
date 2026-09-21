@@ -19,6 +19,52 @@ final class NavidromeSession {
     private(set) var isRefreshing = false
     private(set) var libraryErrorMessage: String?
 
+    private(set) var loadedAlbumCount = 0
+    private var loadRevision = UUID()
+    private var libraryLoadTask: Task<[SubsonicAlbum], Error>?
+    private let transport: any SubsonicTransport
+
+    init(transport: any SubsonicTransport = URLSessionSubsonicTransport()) {
+        self.transport = transport
+    }
+
+    func cancelLibraryLoading() {
+        libraryLoadTask?.cancel()
+    }
+
+    private func invalidateLoad() {
+        libraryLoadTask?.cancel()
+        libraryLoadTask = nil
+        loadRevision = UUID()
+        isRefreshing = false
+        loadedAlbumCount = 0
+    }
+
+    private func loadAlbums(using client: SubsonicClient, revision: UUID) async throws -> [SubsonicAlbum] {
+        let task = Task {
+            try Task.checkCancellation()
+            guard try await client.ping() else {
+                throw SubsonicError.api(code: nil, message: "服务器没有通过 Navidrome 连接验证")
+            }
+            try Task.checkCancellation()
+            return try await client.allAlbums { [weak self] count in
+                guard self?.loadRevision == revision else { return }
+                self?.loadedAlbumCount = count
+            }
+        }
+        libraryLoadTask = task
+        return try await withTaskCancellationHandler {
+            do {
+                return try await task.value
+            } catch {
+                if task.isCancelled { throw CancellationError() }
+                throw error
+            }
+        } onCancel: {
+            task.cancel()
+        }
+    }
+
     var errorMessage: String? {
         guard case let .failed(message) = status else { return nil }
         return message
@@ -29,10 +75,14 @@ final class NavidromeSession {
     }
 
     var activeLibraryIdentifier: String {
-        client?.baseURL.absoluteString ?? ""
+        guard let client else { return "" }
+        return LibraryIdentity.account(
+            serverURL: client.baseURL.absoluteString, username: client.username
+        )
     }
 
     func enterDemoMode() {
+        invalidateLoad()
         let demoClient = SubsonicClient.demo()
         client = demoClient
         albums = demoClient.demoAlbums()
@@ -81,6 +131,8 @@ final class NavidromeSession {
             return false
         }
 
+        invalidateLoad()
+        let revision = loadRevision
         status = .connecting
         libraryErrorMessage = nil
         client = nil
@@ -90,20 +142,15 @@ final class NavidromeSession {
         let candidate = SubsonicClient(
             baseURL: url,
             username: cleanUsername,
-            password: password
+            password: password,
+            transport: transport
         )
 
         do {
-            guard try await candidate.ping() else {
-                fail("服务器没有通过 Navidrome 连接验证")
-                return false
-            }
-            let loadedAlbums = try await candidate.albumList(
-                type: "newest",
-                size: 300
-            )
+            let loadedAlbums = try await loadAlbums(using: candidate, revision: revision)
             try Task.checkCancellation()
 
+            guard loadRevision == revision else { return false }
             client = candidate
             albums = loadedAlbums
             if savesCredentials {
@@ -116,9 +163,11 @@ final class NavidromeSession {
             status = .connected
             return true
         } catch is CancellationError {
+            guard loadRevision == revision else { return false }
             status = .signedOut
             return false
         } catch {
+            guard loadRevision == revision else { return false }
             fail("连接失败：\(error.localizedDescription)")
             return false
         }
@@ -130,20 +179,22 @@ final class NavidromeSession {
             status = .signedOut
             return
         }
+        invalidateLoad()
+        let revision = loadRevision
         isRefreshing = true
         libraryErrorMessage = nil
-        defer { isRefreshing = false }
+        defer {
+            if loadRevision == revision { isRefreshing = false }
+        }
         do {
-            _ = try await client.ping()
-            let refreshedAlbums = try await client.albumList(
-                type: "newest",
-                size: 300
-            )
+            let refreshedAlbums = try await loadAlbums(using: client, revision: revision)
             try Task.checkCancellation()
+            guard loadRevision == revision else { return }
             albums = refreshedAlbums
         } catch is CancellationError {
             return
         } catch {
+            guard loadRevision == revision else { return }
             // A transient Wi-Fi or NAS interruption must not discard the
             // loaded library, stop playback, or force the user to sign in.
             libraryErrorMessage =
@@ -156,6 +207,7 @@ final class NavidromeSession {
     }
 
     func requireSignIn() {
+        invalidateLoad()
         client = nil
         albums = []
         isDemoMode = false
@@ -169,6 +221,7 @@ final class NavidromeSession {
     }
 
     private func fail(_ message: String) {
+        invalidateLoad()
         client = nil
         albums = []
         isDemoMode = false

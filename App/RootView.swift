@@ -47,6 +47,7 @@ struct RootView: View {
         Group {
             if session.status == .connected {
                 authenticatedContent
+                    .id(session.activeLibraryIdentifier)
             } else if session.status == .checking {
                 VStack(spacing: 16) {
                     ProgressView()
@@ -64,9 +65,7 @@ struct RootView: View {
         }
         .onChange(of: session.status) { _, status in
             if status == .connected {
-                let libraryIdentifier = session.isDemoMode
-                    ? session.activeLibraryIdentifier
-                    : settings.serverURL
+                let libraryIdentifier = session.activeLibraryIdentifier
                 history.activate(serverURL: libraryIdentifier)
                 behavior.activate(serverURL: libraryIdentifier)
                 favorites.activate(serverURL: libraryIdentifier)
@@ -74,7 +73,7 @@ struct RootView: View {
                 if !session.isDemoMode,
                    let client = session.client {
                     player.restoreLastPlayback(
-                        for: settings.serverURL,
+                        for: session.activeLibraryIdentifier,
                         using: client
                     )
                 } else {
@@ -93,9 +92,7 @@ struct RootView: View {
         }
         .onChange(of: player.qualifiedPlayEvent?.id) { _, _ in
             guard let event = player.qualifiedPlayEvent else { return }
-            let libraryIdentifier = session.isDemoMode
-                ? session.activeLibraryIdentifier
-                : settings.serverURL
+            let libraryIdentifier = session.activeLibraryIdentifier
             history.record(event, for: libraryIdentifier)
             behavior.record(event, for: libraryIdentifier)
         }

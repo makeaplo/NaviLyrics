@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - 模型
 
-struct SubsonicAlbum: Identifiable, Hashable {
+struct SubsonicAlbum: Identifiable, Hashable, Sendable {
     let id: String
     let title: String
     let artist: String
@@ -23,7 +23,7 @@ struct SubsonicArtist: Identifiable, Hashable {
     let albumCount: Int
 }
 
-struct SubsonicSong: Identifiable, Hashable {
+struct SubsonicSong: Identifiable, Hashable, Sendable {
     let id: String
     let title: String
     let artist: String
@@ -252,7 +252,7 @@ private final class DemoClientState {
 
 /// Navidrome 实现了标准 Subsonic API（v1.16+），使用 REST + 密码盐加密认证。
 @MainActor
-struct SubsonicClient {
+struct SubsonicClient: Sendable {
     private static let maximumResponseSize = 20 * 1_024 * 1_024
     let baseURL: URL
     let username: String
@@ -263,8 +263,13 @@ struct SubsonicClient {
     private let clientName = "navilyrics"
     private let apiVersion = "1.16.1"
     private let demoState: DemoClientState?
+    private let transport: any SubsonicTransport
 
-    init(baseURL: URL, username: String, password: String) {
+    init(
+        baseURL: URL, username: String, password: String,
+        transport: any SubsonicTransport = URLSessionSubsonicTransport()
+    ) {
+        self.transport = transport
         let salt = String(
             UUID().uuidString
                 .replacingOccurrences(of: "-", with: "")
@@ -286,6 +291,7 @@ struct SubsonicClient {
         authenticationSalt = ""
         authenticationToken = ""
         self.demoState = demoState
+        transport = URLSessionSubsonicTransport()
     }
 
     @MainActor
@@ -331,11 +337,11 @@ struct SubsonicClient {
     // MARK: 音乐库
 
     /// 专辑列表（newest / random / alphabetical / recent / frequent / highest）
-    func albumList(type: String = "newest", size: Int = 200) async throws -> [SubsonicAlbum] {
-        if let demoState { return demoState.albums }
+    func albumList(type: String = "newest", size: Int = 200, offset: Int = 0) async throws -> [SubsonicAlbum] {
+        if let demoState { return Array(demoState.albums.dropFirst(max(offset, 0)).prefix(max(size, 0))) }
         let resp: SubsonicResponse = try await request(
             "getAlbumList2",
-            params: ["type": type, "size": "\(size)"]
+            params: ["type": type, "size": "\(min(max(size, 1), 500))", "offset": "\(max(offset, 0))"]
         )
         let albums = resp.albumList2?.album ?? []
         return albums.map { a in
@@ -345,6 +351,29 @@ struct SubsonicClient {
                 artist: a.artist ?? "",
                 coverArt: a.coverArt, year: a.year
             )
+        }
+    }
+
+    /// Publish only a complete snapshot; callers retain their previous library on failure.
+    func allAlbums(
+        pageSize: Int = 300,
+        onProgress: @MainActor (Int) -> Void = { _ in }
+    ) async throws -> [SubsonicAlbum] {
+        let size = min(max(pageSize, 1), 500)
+        var albums: [SubsonicAlbum] = []
+        var seen: Set<String> = []
+        var offset = 0
+        while true {
+            try Task.checkCancellation()
+            let page = try await albumList(size: size, offset: offset)
+            try Task.checkCancellation()
+            if page.isEmpty { return albums }
+            let additions = page.filter { seen.insert($0.id).inserted }
+            guard !additions.isEmpty else { throw SubsonicError.paginationStalled }
+            albums.append(contentsOf: additions)
+            onProgress(albums.count)
+            if page.count < size { return albums }
+            offset += page.count
         }
     }
 
@@ -497,17 +526,47 @@ struct SubsonicClient {
     }
 
     /// Loads the songs needed by local recommendation scoring.
-    func librarySongs(from albums: [SubsonicAlbum]) async throws -> [SubsonicSong] {
+    func librarySongs(
+        from albums: [SubsonicAlbum],
+        onProgress: @MainActor (Int, Int) -> Void = { _, _ in }
+    ) async throws -> [SubsonicSong] {
         if let demoState { return demoState.allSongs }
+        var seen: Set<String> = []
+        let uniqueAlbums = albums.filter { seen.insert($0.id).inserted }
+        guard !uniqueAlbums.isEmpty else { return [] }
 
-        var songsByID: [String: SubsonicSong] = [:]
-        for album in albums {
-            try Task.checkCancellation()
-            for song in try await songs(inAlbum: album.id) {
-                songsByID[song.id] = song
+        // Four in-flight requests, independent of library size. Deduplicate album
+        // IDs before scheduling, and preserve source order despite response order.
+        return try await withThrowingTaskGroup(of: (Int, [SubsonicSong]).self) { group in
+            var next = 0
+            var completed = 0
+            var results = Array(repeating: [SubsonicSong](), count: uniqueAlbums.count)
+            for index in 0..<min(4, uniqueAlbums.count) {
+                let id = uniqueAlbums[index].id
+                group.addTask {
+                    try Task.checkCancellation()
+                    return (index, try await self.songs(inAlbum: id))
+                }
+                next += 1
             }
+            while let (index, songs) = try await group.next() {
+                try Task.checkCancellation()
+                results[index] = songs
+                completed += 1
+                onProgress(completed, uniqueAlbums.count)
+                if next < uniqueAlbums.count {
+                    let scheduledIndex = next
+                    let id = uniqueAlbums[scheduledIndex].id
+                    group.addTask {
+                        try Task.checkCancellation()
+                        return (scheduledIndex, try await self.songs(inAlbum: id))
+                    }
+                    next += 1
+                }
+            }
+            var songIDs: Set<String> = []
+            return results.flatMap { $0 }.filter { songIDs.insert($0.id).inserted }
         }
-        return Array(songsByID.values)
     }
 
     /// 歌手详情及其专辑。
@@ -766,7 +825,7 @@ struct SubsonicClient {
         var req = URLRequest(url: url)
         req.timeoutInterval = 20
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await transport.data(for: req)
         guard let http = resp as? HTTPURLResponse else {
             throw SubsonicError.invalidResponse
         }
@@ -827,6 +886,7 @@ enum SubsonicError: LocalizedError {
     case http(statusCode: Int)
     case api(code: Int?, message: String)
     case decoding(endpoint: String, detail: String)
+    case paginationStalled
     case responseTooLarge
 
     var errorDescription: String? {
@@ -841,6 +901,8 @@ enum SubsonicError: LocalizedError {
             code.map { "\(message)（错误码 \($0)）" } ?? message
         case let .decoding(endpoint, detail):
             "\(endpoint) 响应格式不兼容：\(detail)"
+        case .paginationStalled:
+            "服务器返回了重复的专辑分页，请刷新重试"
         case .responseTooLarge:
             "服务器响应过大，已停止处理以保护设备内存"
         }

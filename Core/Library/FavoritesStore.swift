@@ -11,10 +11,14 @@ final class FavoritesStore {
     private(set) var errorMessage: String?
     private(set) var updatingSongIDs: Set<String> = []
 
+    private var revision = UUID()
+
     func activate(serverURL: String) {
         let normalizedURL = Self.normalizedServerURL(serverURL)
         guard activeServerURL != normalizedURL else { return }
 
+        revision = UUID()
+        isLoading = false
         activeServerURL = normalizedURL
         songs = []
         hasLoaded = false
@@ -23,6 +27,7 @@ final class FavoritesStore {
     }
 
     func deactivate() {
+        revision = UUID()
         activeServerURL = ""
         songs = []
         isLoading = false
@@ -32,15 +37,19 @@ final class FavoritesStore {
     }
 
     func refresh(using client: SubsonicClient) async {
-        guard !isLoading else { return }
+        guard !isLoading, activeServerURL == LibraryIdentity.account(
+            serverURL: client.baseURL.absoluteString, username: client.username
+        ) else { return }
+        let requestRevision = revision
 
         isLoading = true
         errorMessage = nil
-        defer { isLoading = false }
+        defer { if revision == requestRevision { isLoading = false } }
 
         do {
             let loadedSongs = try await client.starredSongs()
             try Task.checkCancellation()
+            guard revision == requestRevision else { return }
             songs = loadedSongs.map { song in
                 var song = song
                 song.isStarred = true
@@ -50,6 +59,7 @@ final class FavoritesStore {
         } catch is CancellationError {
             return
         } catch {
+            guard revision == requestRevision else { return }
             errorMessage = "收藏加载失败：\(error.localizedDescription)"
         }
     }
@@ -70,10 +80,15 @@ final class FavoritesStore {
         song: SubsonicSong,
         using client: SubsonicClient
     ) async -> Bool? {
-        guard updatingSongIDs.insert(song.id).inserted else {
+        guard activeServerURL == LibraryIdentity.account(
+            serverURL: client.baseURL.absoluteString, username: client.username
+        ), updatingSongIDs.insert(song.id).inserted else {
             return nil
         }
-        defer { updatingSongIDs.remove(song.id) }
+        let requestRevision = revision
+        defer {
+            if revision == requestRevision { updatingSongIDs.remove(song.id) }
+        }
 
         let currentlyFavorite = isFavorite(
             songID: song.id,
@@ -86,6 +101,8 @@ final class FavoritesStore {
                 songID: song.id,
                 isFavorite: shouldFavorite
             )
+            try Task.checkCancellation()
+            guard revision == requestRevision else { return nil }
             var updatedSong = song
             updatedSong.isStarred = shouldFavorite
             if shouldFavorite {
@@ -97,6 +114,7 @@ final class FavoritesStore {
             errorMessage = nil
             return shouldFavorite
         } catch {
+            guard revision == requestRevision else { return nil }
             errorMessage = "收藏操作失败：\(error.localizedDescription)"
             return nil
         }
@@ -111,33 +129,6 @@ final class FavoritesStore {
     }
 
     private static func normalizedServerURL(_ value: String) -> String {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return "" }
-
-        let candidate = trimmed.contains("://")
-            ? trimmed
-            : "http://\(trimmed)"
-        guard var components = URLComponents(string: candidate),
-              let host = components.host?.lowercased() else {
-            return trimmed
-                .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-                .lowercased()
-        }
-
-        components.scheme = components.scheme?.lowercased()
-        components.host = host
-        components.query = nil
-        components.fragment = nil
-        if components.path == "/" {
-            components.path = ""
-        } else {
-            components.path = components.path.trimmingCharacters(
-                in: CharacterSet(charactersIn: "/")
-            )
-            if !components.path.isEmpty {
-                components.path = "/\(components.path)"
-            }
-        }
-        return components.string ?? candidate.lowercased()
+        LibraryIdentity.normalizedKey(value)
     }
 }

@@ -20,6 +20,12 @@ struct LoginView: View {
                     header
                     credentialsForm
                     connectButton
+                    if session.isConnecting {
+                        Text("已读取 \(session.loadedAlbumCount) 张专辑")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        Button("取消加载") { session.cancelLibraryLoading() }
+                    }
                 }
                 .frame(maxWidth: 560)
                 .padding(.horizontal, 24)

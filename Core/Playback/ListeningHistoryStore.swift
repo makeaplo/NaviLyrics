@@ -183,33 +183,6 @@ final class ListeningHistoryStore {
     }
 
     private static func normalizedServerURL(_ value: String) -> String {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return "" }
-
-        let candidate = trimmed.contains("://")
-            ? trimmed
-            : "http://\(trimmed)"
-        guard var components = URLComponents(string: candidate),
-              let host = components.host?.lowercased() else {
-            return trimmed
-                .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-                .lowercased()
-        }
-
-        components.scheme = components.scheme?.lowercased()
-        components.host = host
-        components.query = nil
-        components.fragment = nil
-        if components.path == "/" {
-            components.path = ""
-        } else {
-            components.path = components.path.trimmingCharacters(
-                in: CharacterSet(charactersIn: "/")
-            )
-            if !components.path.isEmpty {
-                components.path = "/\(components.path)"
-            }
-        }
-        return components.string ?? candidate.lowercased()
+        LibraryIdentity.normalizedKey(value)
     }
 }

@@ -7,6 +7,7 @@ struct SettingsView: View {
     @Environment(PlayerStore.self) private var player
     @Environment(ListeningHistoryStore.self) private var history
     @Environment(PlaybackBehaviorStore.self) private var behavior
+    @Environment(PersonalizedRecommendationCache.self) private var recommendationCache
     @Environment(\.dismiss) private var dismiss
     @State private var showSignOutConfirmation = false
     @State private var showResetConfirmation = false
@@ -191,6 +192,7 @@ struct SettingsView: View {
                 ) {
                     history.clearCurrentServerHistory()
                     behavior.clearCurrentServerBehavior()
+                    recommendationCache.clearCurrentAccount()
                     if session.isDemoMode {
                         player.reset()
                         session.requireSignIn()
@@ -216,10 +218,11 @@ struct SettingsView: View {
                 Button("清除播放记录", role: .destructive) {
                     history.clearCurrentServerHistory()
                     behavior.clearCurrentServerBehavior()
+                    recommendationCache.clearCurrentAccount()
                 }
                 Button("取消", role: .cancel) {}
             } message: {
-                Text("这只会清除当前 Navidrome 服务器在本机的播放记录。")
+                Text("这会清除当前账号在本机的播放历史、偏好记录和推荐缓存，不影响其他账号或服务器上的收藏。")
             }
         }
     }
